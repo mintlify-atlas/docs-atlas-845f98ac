@@ -1,7 +1,7 @@
 ---
-title: "Connect Custom Model Endpoints to Grok Build"
+title: "Connect Custom and Self-Hosted Model Endpoints to Grok Build"
 sidebarTitle: "Custom Models"
-description: "Configure Grok Build to use custom model endpoints — bring your own API key, connect Ollama or other OpenAI-compatible providers, and set per-model options."
+description: "Configure Grok Build to use custom model endpoints — bring your own API key, connect Ollama or OpenAI-compatible providers, and set per-model options."
 ---
 
 Grok uses SpaceXAI-hosted models by default. Custom endpoints let you connect alternative providers, self-hosted models, and enterprise gateways — giving your team full control over model selection while keeping the same Grok workflow.
@@ -23,18 +23,18 @@ grok models
 ### At Launch
 
 ```bash
-grok -m grok-build
+grok -p "Hello" -m grok-build
 ```
 
 ### In a Session
 
-```
+```text
 /model grok-build
 ```
 
 Or use the short alias:
 
-```
+```text
 /m grok-build
 ```
 
@@ -113,6 +113,29 @@ env_key  = "OPENAI_API_KEY"
 
 `api_backend` defaults to `"chat_completions"`, so you do not need to set it explicitly for standard OpenAI-compatible endpoints.
 
+### OpenAI (Responses API)
+
+If your provider supports the newer Responses API:
+
+```toml
+[model.gpt-4o-responses]
+model      = "gpt-4o"
+base_url   = "https://api.openai.com/v1"
+name       = "GPT-4o (Responses)"
+api_backend = "responses"
+env_key    = "OPENAI_API_KEY"
+```
+
+### Together AI
+
+```toml
+[model.together-mixtral]
+model    = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+base_url = "https://api.together.xyz/v1"
+name     = "Mixtral 8x7B"
+env_key  = "TOGETHER_API_KEY"
+```
+
 ---
 
 ## API Backends
@@ -138,7 +161,13 @@ Grok resolves the API key for each model in this order:
 
 ## Enterprise Deployment
 
-Use `GROK_MODELS_BASE_URL` to point all inference at a corporate gateway:
+Use `GROK_MODELS_BASE_URL` to point all inference at a corporate gateway. The following environment variables are available:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROK_MODELS_BASE_URL` | Yes | Base URL for inference. Grok fetches the model list from `{base_url}/models`. |
+| `XAI_API_KEY` | Yes | API key sent as `Authorization: Bearer`. Grok also accepts `GROK_CODE_XAI_API_KEY`. |
+| `GROK_MODELS_LIST_URL` | No | Override the model-list URL when it differs from `{base_url}/models`. |
 
 ```bash
 export GROK_MODELS_BASE_URL="https://api.acme.com/v1"
@@ -188,7 +217,7 @@ telemetry = false
 
 Switch the model's reasoning effort during a session:
 
-```
+```text
 /effort low
 /effort medium
 /effort high

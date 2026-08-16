@@ -1,7 +1,7 @@
 ---
-title: "Authenticate with Grok Build: All Auth Methods"
+title: "Grok Build Authentication: Browser, API Key, OIDC, and More"
 sidebarTitle: "Authentication"
-description: "Configure browser login, API keys, OIDC/SSO, external auth providers, and device-code flow for Grok Build. Includes token refresh and credential precedence."
+description: "Configure browser login, API keys, OIDC/SSO, external auth providers, and device-code flow for Grok Build. Covers token refresh and credential precedence."
 ---
 
 Grok Build supports multiple authentication methods to cover interactive development, enterprise SSO, and fully headless CI/CD environments. You can authenticate through a browser, supply an API key via an environment variable, delegate to your company's Identity Provider via OIDC, plug in a custom auth binary, or use a device-code flow on machines where no browser is available.
@@ -119,7 +119,7 @@ When browser-based login isn't possible — for example, on sandboxed VMs, CI ru
 
 Grok runs your command via `sh -c "<command>"`, reads the token from stdout, and surfaces status messages from stderr to the user:
 
-```
+```text
 +--------------+    sh -c     +------------------------+
 |     Grok     |------------->|  your auth binary      |
 |              |              |                        |
@@ -152,7 +152,7 @@ Grok runs your command via `sh -c "<command>"`, reads the token from stdout, and
 
 **Bare string** — just the raw token:
 
-```
+```text
 eyJhbGciOiJSUzI1NiIs...
 ```
 
@@ -247,16 +247,6 @@ Grok prints a URL and a short code to the terminal. Open the URL on any device, 
   over the auth UX or need to integrate with a non-standard IdP.
 </Tip>
 
-## Auth Precedence
-
-Grok resolves credentials for each request in the following order, highest to lowest:
-
-1. **Per-model `api_key` or `env_key`** — set under `[model.<name>]` in `config.toml`. Wins whenever present.
-2. **Active session token** — obtained via browser login, OIDC/OAuth2, or an external auth provider and stored in `~/.grok/auth.json`.
-3. **`XAI_API_KEY`** — environment-variable fallback when no session token is active.
-
-When more than one login flow is configured, Grok populates the session token from the first available source, highest to lowest: external auth provider → enterprise OIDC → SpaceXAI OAuth2 browser login.
-
 ## Automatic Credential Refresh
 
 Grok handles token renewal automatically so you are rarely interrupted mid-session:
@@ -264,7 +254,6 @@ Grok handles token renewal automatically so you are rarely interrupted mid-sessi
 - **Before expiry:** If your auth provider returned `expires_in` (JSON output) or you set `auth_token_ttl`, Grok re-runs the auth binary approximately 5 minutes before expiry (configurable via `GROK_AUTH_EARLY_INVALIDATION_SECS`).
 - **On auth error:** If the xAI API returns `401 Unauthorized`, Grok refreshes the credential and retries the request.
 - **OIDC:** When a `refresh_token` is available, Grok silently refreshes via your IdP without re-opening the browser.
-- **Hot reload:** Grok watches `~/.grok/auth.json` for changes. If an external script writes new tokens, Grok picks them up on the next API call without a restart.
 
 Tune the proactive refresh buffer:
 
@@ -275,6 +264,32 @@ export GROK_AUTH_EARLY_INVALIDATION_SECS=300
 # Disable proactive refresh — only refresh at expiry or on a 401
 export GROK_AUTH_EARLY_INVALIDATION_SECS=0
 ```
+
+## Hot Reload
+
+Grok watches `~/.grok/auth.json` for changes. If an external script writes new tokens, Grok picks them up on the next API call without a restart — no need to kill and relaunch the agent.
+
+## Auth Precedence
+
+Grok resolves credentials for each request in the following order, highest to lowest:
+
+1. **Per-model `api_key` or `env_key`** — set under `[model.<name>]` in `config.toml`. Wins whenever present.
+2. **Active session token** — obtained via browser login, OIDC/OAuth2, or an external auth provider and stored in `~/.grok/auth.json`.
+3. **`XAI_API_KEY`** — environment-variable fallback when no session token is active.
+
+When more than one login flow is configured, Grok populates the session token from the first available source, highest to lowest: external auth provider → enterprise OIDC → SpaceXAI OAuth2 browser login.
+
+## Related Settings
+
+Coding-data sharing — **Coding data, retention, and training** in Settings (opened via `/privacy`) — does not change these config knobs:
+
+| Setting | How to set it |
+|---------|---------------|
+| `[features] telemetry` | `config.toml` or `GROK_TELEMETRY_ENABLED` |
+| `[telemetry] trace_upload` | `config.toml` or `GROK_TELEMETRY_TRACE_UPLOAD` |
+| External OpenTelemetry | `GROK_EXTERNAL_OTEL` / `[telemetry] otel_*` |
+
+On team accounts, only a team admin can change coding-data sharing. Team admins can also enable or disable Zero Data Retention (ZDR) for their team. When ZDR is on, coding-data sharing cannot be changed at all — the settings row shows `ZDR` in place of the value.
 
 ## Troubleshooting
 

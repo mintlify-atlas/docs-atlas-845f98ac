@@ -1,7 +1,7 @@
 ---
 title: "Background Tasks and the /loop Command in Grok Build"
 sidebarTitle: "Background Tasks"
-description: "Run long-lived commands in the background while the conversation continues. Use /loop for recurring tasks, the monitor tool for live output, and Ctrl+B to demote."
+description: "Run long-lived commands in the background while the conversation continues. Use /loop for periodic tasks, monitor for live streams, and Ctrl+B to demote."
 ---
 
 Grok can run processes without blocking the conversation using background commands and the tasks system. Whether you're starting a dev server, watching a log file, or polling CI status, Grok manages long-lived work while staying responsive to your next prompt.
@@ -68,7 +68,7 @@ Use `kill_command_or_subagent(task_id)` to terminate a running background task o
 
 ### Syntax
 
-```
+```text
 /loop [interval] <prompt>
 ```
 
@@ -83,7 +83,7 @@ The interval format supports:
 
 ### Examples
 
-```
+```text
 /loop 5m Check if the test suite passes and report any failures
 /loop 2h Summarize new commits since the last check
 /loop 60s Check if the dev server at localhost:3000 is responding
@@ -158,13 +158,13 @@ To toggle the prompt queue instead, press `Ctrl+;`.
 
 Whenever background work is in flight while the agent appears idle, a persistent status line appears above the prompt:
 
-```
+```text
 ◎ 1 command · 2 monitors · 1 loop · 1 subagent still running
 ```
 
 This counts running background commands, monitors, scheduled `/loop` tasks, and background subagents, and updates live as each finishes. While a turn is waiting on background work, the status line adds:
 
-```
+```text
 ◎ 1 command still running · send a message to interrupt
 ```
 

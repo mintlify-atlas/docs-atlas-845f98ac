@@ -1,7 +1,7 @@
 ---
-title: "Permissions and Safety Controls in Grok Build"
+title: "Grok Build Permissions and Safety: Modes, Rules, and Hooks"
 sidebarTitle: "Permissions & Safety"
-description: "Control what Grok Build can access with permission modes, allow/ask/deny rules, and hooks. Configure interactive approvals, YOLO mode, and safety rule matching."
+description: "Control Grok Build tool access with permission modes and allow/ask/deny rules. Covers bypassPermissions, rule matching, interactive approvals, and hooks."
 ---
 
 Grok's permission system controls which tools run automatically and which require your explicit approval. It operates in layers: a **permission mode** sets the baseline approval behavior for the session, **rules** (allow/ask/deny) refine that baseline for specific tools and patterns, and **hooks** can enforce hard limits before any other check runs.
@@ -206,6 +206,8 @@ The default `action` for a rule with no explicit `action` field is `deny`, not `
 
 **MCP rules** — `MCPTool(server__tool)` form with glob support. `MCPTool(linear__*)` matches every tool from the `linear` server.
 
+**Recognized rule-string tool names** — In the string-form rule syntax used by `--allow`/`--deny` flags and `.claude/settings.json`, the recognized names are: `Bash`, `Read`, `Edit` (and `Write`), `Grep` (and `Glob`), `MCPTool`, `WebFetch`, `WebSearch`. A bare `*` matches every tool. Globs are not supported in the tool-name position.
+
 **Evaluation order** — `deny` > `ask` > `allow`, regardless of rule order or source file. Any matching `deny` rejects; otherwise any matching `ask` prompts; otherwise any matching `allow` approves.
 
 ## Interactive Approvals
@@ -220,15 +222,16 @@ When a tool call requires approval, the permission prompt offers these choices:
 
 | Key | Action |
 |-----|--------|
-| **Up / Down** | Move between choices |
-| **Tab** | Walk between options |
-| **1–9** | Choose option by number |
-| **Enter** | Confirm selection |
-| **← / →** | Widen or narrow scope of the approval |
-| **e** | Edit the pattern before saving |
-| **Ctrl+F** | Expand / show full args |
-| **Ctrl+O** | Toggle always-approve (YOLO) mode |
-| **Esc** | Park / dismiss without choosing |
+| **↑ / ↓**, **j / k** | Move between options (clamped at the ends) |
+| **Tab / Shift+Tab** | Walk the options in a loop |
+| **1–9** | Choose that option directly |
+| **Enter** | Choose the focused option |
+| **← / →** | Widen or narrow the scope an "always" answer would remember |
+| **e** | Edit the always-allow pattern by hand (bash prompts) |
+| **Ctrl+F** | Expand / collapse the full arguments |
+| **Ctrl+O** | Turn on always-approve mode |
+| **Esc** | Park focus in the scrollback (`Tab` returns). Never answers or dismisses the request. |
+| **Ctrl+C** | Cancel the request |
 
 ### Per-Command Always-Allow Memory
 

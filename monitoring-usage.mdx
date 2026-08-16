@@ -1,7 +1,7 @@
 ---
-title: "Monitor Grok Build Usage with OpenTelemetry"
+title: "Monitor Grok Build Usage with OpenTelemetry Metrics"
 sidebarTitle: "Monitoring Usage"
-description: "Export Grok Build metrics and events to your OpenTelemetry collector. Covers environment setup, metrics and events schema, PromQL examples, and privacy model."
+description: "Export Grok Build metrics and events to your OpenTelemetry collector. Covers quick start, schema, PromQL queries, and privacy model."
 ---
 
 Grok can export usage metrics and events to your organization's own OpenTelemetry collector, giving platform teams fleet-wide visibility into token consumption, tool-permission decisions, startup performance, and errors — without any data flowing through SpaceXAI. The external stream is structurally separate from SpaceXAI-internal telemetry and works even for ZDR (zero-data-retention) teams.
@@ -40,13 +40,18 @@ grok
 | `OTEL_METRICS_EXPORTER` | `none` | `otlp` \| `console` \| `none` |
 | `OTEL_LOGS_EXPORTER` | `none` | `otlp` \| `console` \| `none`. Gates the event stream. |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | `http/protobuf` \| `grpc`. Base protocol for both signals. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` (HTTP) or `http://localhost:4317` (gRPC) | Base endpoint. For `http/protobuf`, `/v1/logs` and `/v1/metrics` are appended automatically. |
+| `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` / `OTEL_EXPORTER_OTLP_METRICS_PROTOCOL` | — | Per-signal protocol overrides (same values as the base protocol). Unrecognized values disable the stream. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` (HTTP) or `http://localhost:4317` (gRPC) | Base endpoint. For `http/protobuf`, `/v1/logs` and `/v1/metrics` are appended per the OTLP spec; for `grpc`, the collector endpoint is used as-is. |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` / `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Signal-specific endpoint overrides, used verbatim. For gRPC these should normally be collector endpoints without `/v1/...` paths. |
 | `OTEL_EXPORTER_OTLP_HEADERS` | — | Collector auth in `k=v,k2=v2` format. The only supported auth mechanism; tokens are never stored on disk. |
-| `OTEL_EXPORTER_OTLP_CERTIFICATE` | — | Path to a PEM bundle with additional trusted CA certificates for a private/corporate CA. |
+| `OTEL_EXPORTER_OTLP_CERTIFICATE` | — | Path to a PEM bundle with additional trusted CA certificates for a private/corporate CA. Additive to the default trust roots (system store and embedded Mozilla roots). Also settable via `[telemetry] otel_certificate`. |
+| `OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE` / `OTEL_EXPORTER_OTLP_CLIENT_KEY` | — | PEM paths for mTLS client identity. Both cert and key must be set; half-config is ignored with a warning. Unencrypted PEM keys only. Also settable via `[telemetry] otel_client_certificate` / `otel_client_key`. |
 | `OTEL_EXPORTER_OTLP_TIMEOUT` | `10000` ms | Export timeout. |
 | `OTEL_METRIC_EXPORT_INTERVAL` | `60000` ms | Metric export interval. |
 | `OTEL_BLRP_SCHEDULE_DELAY` | `5000` ms | Log batch interval (alias: `OTEL_LOGS_EXPORT_INTERVAL`). |
+| `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` | `delta` | `delta` \| `cumulative`. |
 | `OTEL_METRICS_INCLUDE_SESSION_ID` | `1` | Attach `session.id` to metrics (set to `0` to reduce cardinality). |
+| `OTEL_METRICS_INCLUDE_VERSION` | `0` | Attach `app.version` to metrics. |
 | `OTEL_LOG_USER_PROMPTS` | `0` | Content gate: export prompt text on `grok_code.user_prompt` (60 KB cap, secret-scrubbed). |
 | `OTEL_LOG_TOOL_DETAILS` | `0` | Content gate: export tool parameters (4 KB cap), full file paths, and verbatim MCP/skill/plugin names. Bash command text is **never** exported in v1. |
 

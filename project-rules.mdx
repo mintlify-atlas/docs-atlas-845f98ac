@@ -1,21 +1,21 @@
 ---
 title: "Project Rules with AGENTS.md: Per-Repo Instructions"
 sidebarTitle: "Project Rules"
-description: "Teach Grok Build your project's conventions by creating AGENTS.md files. Rules are scoped by directory, with deeper files taking priority over parent directories."
+description: "Teach Grok Build your project's conventions with AGENTS.md files. Rules are scoped by directory, with deeper files taking priority over parent directories."
 ---
 
 `AGENTS.md` files inject per-project instructions into every Grok session for that directory. Place one in your repository root to give Grok permanent context about your codebase's conventions, build process, and architecture — without restating them each session.
 
 ## Supported Filenames
 
-Grok checks for these filenames (in order) within each directory and loads every match:
+Grok checks for these filenames (in this order) within each directory and loads every match:
 
-- `AGENTS.md` *(primary)*
 - `Agents.md`
-- `AGENT.md`
-- `CLAUDE.md` — Claude Code compatibility
 - `Claude.md` — Claude Code compatibility
+- `CLAUDE.md` — Claude Code compatibility
 - `CLAUDE.local.md` — Claude Code compatibility (gitignore for personal overrides)
+- `AGENT.md`
+- `AGENTS.md`
 
 On case-insensitive filesystems, names that resolve to the same file are deduplicated and counted once. When Claude compatibility is enabled (the default), Grok also scans `~/.claude/` and `.claude/CLAUDE.md` at each directory level. With Cursor compatibility enabled, `~/.cursor/` is scanned the same way.
 
@@ -23,9 +23,15 @@ On case-insensitive filesystems, names that resolve to the same file are dedupli
 
 ## Discovery and Priority
 
-Grok discovers project rules in this order:
+Grok scans for project rules in this order:
 
-```
+1. **Home rules**: `~/.grok/` (then enabled `~/.claude/` and `~/.cursor/` sources)
+2. **Repo rules**: If inside a git repo, every directory from the repo root down to the current working directory (inclusive)
+3. **CWD-only**: If not inside a git repo, only the current working directory
+
+A typical load order looks like:
+
+```text
 ~/.grok/AGENTS.md              (global — applies to all projects)
 <repo-root>/AGENTS.md          (repo root)
 <repo-root>/src/AGENTS.md      (subdirectory)
@@ -36,8 +42,6 @@ All matching files are loaded and injected. Files in **deeper directories appear
 
 **Auto-loading:** Grok loads all files from the repo root to the current working directory at session start. When Grok later reads or edits files in directories outside that initial set, it detects any instruction files there and reads them when they apply.
 
-If you are not inside a Git repository, Grok loads only the current working directory's files.
-
 ---
 
 ## Rules Directories
@@ -46,10 +50,17 @@ In addition to named files, Grok scans for `*.md` files in rules directories at 
 
 | Location | Notes |
 |----------|-------|
-| `.grok/rules/` | Always scanned |
-| `.claude/rules/` | Claude compatibility (configurable) |
-| `.cursor/rules/` | Cursor compatibility (configurable) |
-| `~/.grok/rules/` | Global; applies to all projects |
+| `<dir>/.grok/rules/` | Always scanned |
+| `<dir>/.claude/rules/` | Claude compatibility (configurable) |
+| `<dir>/.cursor/rules/` | Cursor compatibility (configurable) |
+
+Home-level rules directories are also scanned and apply to all projects:
+
+| Location | Notes |
+|----------|-------|
+| `~/.grok/rules/` | Always scanned; applies to all projects |
+| `~/.claude/rules/` | Controlled by `compat.claude.rules` |
+| `~/.cursor/rules/` | Controlled by `compat.cursor.rules` |
 
 Files within each rules directory are loaded in alphabetical order. Home rules load first, followed by project files from repo root to the current directory.
 
@@ -98,7 +109,7 @@ A complete example for a Rust project:
 
 Place an `AGENTS.md` in any subdirectory to scope rules to that part of the codebase. Rules accumulate from the repo root down, so subdirectory files add to (and can override) parent rules:
 
-```
+```text
 my-monorepo/
   AGENTS.md                    # "Use conventional commits. Run `pnpm test` before PRs."
   packages/
@@ -113,6 +124,17 @@ my-monorepo/
 When Grok is working in `packages/frontend/`, it sees all three files. The `frontend/AGENTS.md` instruction takes precedence over any conflicting instruction from the root.
 
 ---
+
+## Gitignore Filtering
+
+Files ignored by `.gitignore` are skipped during discovery. To keep personal overrides out of the shared repository, add a recognized filename to `.gitignore`:
+
+```gitignore
+# .gitignore
+CLAUDE.local.md
+```
+
+Grok discovers only the recognized filenames listed under [Supported Filenames](#supported-filenames) as top-level instruction files — not custom names such as `AGENTS.local.md` or `notes.md`. Inside a rules directory such as `.grok/rules/`, every `*.md` file is loaded regardless of name.
 
 ## The .grok/ Project Directory
 
@@ -132,26 +154,20 @@ All of these are optional. See the respective guides for details.
 
 ---
 
-## Disabling AGENTS.md Injection
+## Session Rules Flags
 
-To turn off project rules loading entirely (for example, in a scripted environment where you control the full system prompt):
-
-```toml
-# ~/.grok/config.toml
-[features]
-agents_md = false
-```
-
-You can also replace the system prompt for a single session:
-
-```bash
-grok --system-prompt-override "You are a helpful assistant."
-```
-
-Or append extra rules for a single session without editing any file:
+To add rules for a single session without editing files, pass `--rules` (alias `--append-system-prompt`):
 
 ```bash
 grok --rules "Always use TypeScript. Prefer functional components."
+```
+
+Grok appends this text to the session's system prompt. Use it for session-specific customization.
+
+To replace the system prompt entirely, pass `--system-prompt-override` (alias `--system-prompt`). Grok uses the text verbatim and skips both the default system prompt and `--rules`:
+
+```bash
+grok --system-prompt-override "You are a helpful assistant."
 ```
 
 ---

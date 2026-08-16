@@ -1,7 +1,7 @@
 ---
 title: "Grok Build Agent Dashboard: Manage Multiple Sessions"
 sidebarTitle: "Dashboard"
-description: "The Agent Dashboard shows all running Grok sessions in one view. Peek at output, send replies, attach to a session, pin, rename, stop, or dispatch new agents."
+description: "The Agent Dashboard lists all Grok sessions in one view. Peek at output, send replies, attach to a session, pin, rename, stop, or dispatch new agents."
 ---
 
 The Agent Dashboard is a single screen listing every top-level session in the current pager process — local sessions and forks — grouped by state. From one view you can peek at output, send replies without attaching, attach to a session, pin, rename, stop, or dispatch a brand-new agent. Subagents are not listed directly; they run under their parent session, which shows activity when work is in flight.
@@ -32,7 +32,7 @@ The dashboard is hidden in minimal mode. Set `GROK_AGENT_DASHBOARD=0` or `[dashb
 
 ## Dashboard Layout
 
-```
+```text
  Grok Build · Dashboard — 4 agents · 2 awaiting
 ▌● reviewer · audit token flow    Awaiting your input            2m
  ● implementer · fix login bug    Running: cargo test           12m
@@ -82,11 +82,12 @@ A row stays **Working** while it has live background work even if its turn has f
 | `Ctrl+T` | Pin / unpin |
 | `Ctrl+G` | Toggle grouping (state ↔ directory) |
 | `Ctrl+X` | Cancel a running turn, or press twice within 2s to permanently delete |
+| Hover + click `[✗]` | Permanently delete an idle/done row (click again to confirm) |
 | `Shift+↑` / `Shift+↓` | Reorder pinned rows |
 | `Tab` | Toggle focus between dispatch input and overview list |
-| `Esc` | Step back: cancel search → close peek → clear filter → unfocus dispatch → unselect row → exit |
+| `Esc` | Step back: cancel search → close peek → clear filter → unfocus dispatch → unselect row → exit. Never clears a typed dispatch draft (`Ctrl+U` / `Ctrl+C` for that) |
 | `Ctrl+\` | Return from details view, or exit dashboard |
-| `Ctrl+.` (alt: `?`) | Open keyboard shortcuts cheatsheet |
+| `Ctrl+.` (alt: `?`) | Keyboard shortcuts cheatsheet. Footer shows `?` when `Ctrl+.` cannot be delivered. Bare `?` opens help when list-focused or the draft is empty |
 
 ---
 
@@ -99,6 +100,8 @@ Selecting an agent row shows the **peek panel** in place of the dispatch box. Th
 - **Live `❯ reply` input**: send a reply without fully attaching to the session.
 
 Idle agents start immediately on reply; busy agents queue the message. Use `Ctrl+S` to reply and open the detail view in one step.
+
+**`Shift+Tab`** cycles the peeked agent's mode (Normal → Plan → Always-approve → Normal) on the live agent. On the dispatch box, `Shift+Tab` only stages mode for the *next* agent.
 
 For **pending permission or ask-tool questions**, the reply input is replaced by an options list. Use `↑`/`↓` to highlight and `Enter` to answer, or press `1`–`9` to answer directly.
 

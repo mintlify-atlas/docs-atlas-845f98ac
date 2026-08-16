@@ -1,5 +1,5 @@
 ---
-title: "Grok Build: AI Coding Agent for Your Terminal"
+title: "Grok Build: Fullscreen TUI AI Coding Agent Overview"
 sidebarTitle: "Introduction"
 description: "Grok Build is SpaceXAI's fullscreen TUI coding agent. Learn what it does, how it works, and the key concepts you need to use it effectively."
 ---
@@ -72,7 +72,7 @@ The agent selects and invokes tools automatically based on your prompt. Every to
 
 Type `/` in the prompt to access built-in commands for quick actions without writing a full natural-language prompt:
 
-```
+```text
 /model grok-build     # Switch the active model
 /compact              # Compress conversation history to free context
 /always-approve       # Toggle always-approve mode for tool calls
@@ -85,7 +85,7 @@ See the [Slash Commands reference](/slash-commands) for the complete list.
 
 Place an `AGENTS.md` file in your repository (or home directory) to give Grok persistent, project-specific instructions. Grok reads these files at the start of every session and injects their contents as a project-instructions message.
 
-```
+```text
 ~/.grok/AGENTS.md          # Global rules — applied to every project
 <repo-root>/AGENTS.md      # Repository-level rules
 <cwd>/AGENTS.md            # Directory-level rules (highest priority)
@@ -107,9 +107,12 @@ The `grok` binary is built from a Rust workspace. The key crates are:
 |------|----------|
 | `crates/codegen/xai-grok-pager-bin` | Composition-root package; builds the `xai-grok-pager` binary |
 | `crates/codegen/xai-grok-pager` | The TUI: scrollback, prompt, modals, rendering |
-| `crates/codegen/xai-grok-shell` | Agent runtime and leader/stdio/headless entry points |
-| `crates/codegen/xai-grok-tools` | Tool implementations (terminal, file edit, search, and more) |
-| `crates/codegen/xai-grok-workspace` | Host filesystem, VCS, execution, and checkpoints |
+| `crates/codegen/xai-grok-shell` | Agent runtime + leader/stdio/headless entry points |
+| `crates/codegen/xai-grok-tools` | Tool implementations (terminal, file edit, search, ...) |
+| `crates/codegen/xai-grok-workspace` | Host filesystem, VCS, execution, checkpoints |
+| `crates/codegen/...` | The rest of the CLI crate closure (config, MCP, markdown, sandbox, ...) |
+| `crates/common/`, `crates/build/`, `prod/mc/` | Small shared leaf crates pulled in by the closure |
+| `third_party/` | Vendored upstream source (Mermaid diagram stack) |
 
 <Note>
   The root `Cargo.toml` (workspace members, dependency versions, lints, and

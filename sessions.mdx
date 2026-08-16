@@ -1,7 +1,7 @@
 ---
 title: "Manage Sessions in Grok Build: Resume, Rewind, and Compact"
 sidebarTitle: "Sessions"
-description: "Every Grok Build conversation is a saved session. Learn to resume, rewind, compact, fork, and search sessions, and understand the on-disk persistence format."
+description: "Grok Build persists every conversation as a UUIDv7 session. Resume, rewind, compact, and search sessions. Covers storage layout and disk usage commands."
 ---
 
 Grok saves every conversation automatically. Whether you work in the TUI, in headless mode, or over agent stdio, every exchange is recorded as a persistent session. Sessions track the full history of your work — prompts, responses, tool calls, task lists, and token usage — so you can always come back to where you left off.
@@ -29,7 +29,7 @@ Sessions are identified by a unique UUIDv7 (or a client-supplied UUID via `-s`) 
 
 The TUI creates a new session each time you launch. To start fresh mid-session:
 
-```
+```text
 /new
 ```
 
@@ -39,13 +39,13 @@ This clears the current context and begins a new conversation. Alias: `/clear`.
 
 To end the session and quit Grok:
 
-```
+```text
 /quit
 ```
 
 Alias: `/exit`. To leave the current session but stay in Grok, use:
 
-```
+```text
 /home
 ```
 
@@ -53,7 +53,7 @@ This returns you to the welcome screen without quitting.
 
 ### Delete the current session
 
-```
+```text
 /delete
 ```
 
@@ -65,7 +65,7 @@ Confirms first, then permanently removes the session history and returns to the 
 
 ### From the TUI
 
-```
+```text
 /resume
 ```
 
@@ -96,7 +96,7 @@ When you launch `grok`, the welcome screen lists recent sessions for the current
 
 ### Session titles
 
-Titles are generated automatically from the conversation shortly after your first prompt and then frozen — so the title reflects what the session is really about, not just the opening message. A manual `/rename` always wins: once you rename a session, automatic generation never overrides it.
+Title generation starts right after your first prompt so a session always has a title, and then the title is regenerated from the whole conversation at a couple of early turns and frozen — so the title reflects what the session is really about, not just the opening message. A manual `/rename` always wins: once you rename a session, automatic generation never overrides it. Use `/rename --auto` to hand the title back to automatic generation.
 
 ---
 
@@ -104,7 +104,7 @@ Titles are generated automatically from the conversation shortly after your firs
 
 Branch the current session into a new peer agent that starts from a copy of the conversation:
 
-```
+```text
 /fork [--worktree|--no-worktree] [directive]
 ```
 
@@ -114,13 +114,13 @@ Pass an optional `directive` to set the new session's first prompt. Use `--workt
 
 ## Renaming Sessions
 
-```
+```text
 /rename <title>
 ```
 
 Alias: `/title`. Sets a manual title that automatic generation will not override.
 
-```
+```text
 /rename --auto
 ```
 
@@ -132,7 +132,7 @@ Clears a manual title and re-enables automatic titling.
 
 `/rewind` (alias `/undo`) rewinds the conversation to an earlier turn, dropping later turns from the history:
 
-```
+```text
 /rewind
 /undo
 ```
@@ -157,7 +157,7 @@ By default (**Confirm before rewind** on in `/settings`), each pick asks for con
 
 `/compact` compresses the conversation history to save context window space. Use it in long sessions where early messages are no longer relevant:
 
-```
+```text
 /compact
 /compact [context]
 ```
@@ -193,7 +193,7 @@ grok sessions search "rate limit"
 
 Grok stores each session in its own directory, grouped by working directory (URL-encoded):
 
-```
+```text
 ~/.grok/sessions/<encoded-cwd>/<session-id>/
   summary.json             # metadata: title, timestamps, model ID, message counts
   updates.jsonl            # ACP session update stream (conversation + tool calls)
@@ -214,7 +214,7 @@ Grok stores each session in its own directory, grouped by working directory (URL
 
 `grok du` (alias: `grok disk-usage`) reports what `~/.grok` uses on disk. It lists each top-level directory largest first, then each worktree with its size, type, age, label, and path:
 
-```
+```text
 Disk usage for ~/.grok
     412.3 GB  worktrees
       1.2 GB  sessions
@@ -256,3 +256,26 @@ Key worktree operations (managed via the `x.ai/git/worktree/*` extension methods
 - **Create**: Create a new worktree for an isolated session
 - **Apply**: Merge worktree changes back into the main working directory
 - **Remove**: Clean up a worktree when the session is done
+
+---
+
+## Agent stdio Session Management
+
+When building with ACP, sessions are managed via protocol methods:
+
+```typescript
+// Create new session
+const { sessionId } = await connection.request("session/new", {
+  cwd: "/path/to/project",
+  mcpServers: [],
+});
+
+// Load existing session
+await connection.request("session/load", {
+  sessionId: "existing-session-id",
+  cwd: "/path/to/project",
+  mcpServers: [],
+});
+```
+
+The agent persists all session updates automatically. Clients can reconnect and load previous sessions by ID.

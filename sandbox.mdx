@@ -1,5 +1,5 @@
 ---
-title: "Sandbox Mode: OS-Level Isolation for Grok Build"
+title: "Sandbox Mode: OS-Level Process Isolation in Grok Build"
 sidebarTitle: "Sandbox"
 description: "Restrict filesystem and network access using Grok Build's sandbox mode. Profiles from workspace to strict use Landlock on Linux and Seatbelt on macOS."
 ---
@@ -130,9 +130,8 @@ Grok builds the child environment in order: start from `inherit` (`all` keeps ev
 
 | Platform | Mechanism | Minimum Version |
 |----------|-----------|-----------------|
-| Linux | Landlock + seccomp | Kernel 5.13 or later |
-| macOS | Seatbelt | All supported macOS versions |
-| Windows | Not supported | — |
+| Linux | Landlock | Kernel 5.13 or later |
+| macOS | Seatbelt | macOS (all versions) |
 
 If the sandbox cannot be applied (e.g., unsupported kernel, missing entitlements), Grok logs a warning and continues without enforcement. The exception is an explicitly requested **custom profile**: if it cannot be applied, Grok refuses to start rather than run with denied paths exposed.
 

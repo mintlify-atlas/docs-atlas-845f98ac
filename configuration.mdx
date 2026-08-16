@@ -1,7 +1,7 @@
 ---
 title: "Configure Grok Build: config.toml and Environment Variables"
 sidebarTitle: "Configuration"
-description: "Configure Grok Build with config.toml and pager.toml, override settings with environment variables, and manage project-scoped configuration in .grok/ directories."
+description: "Configure Grok Build via config.toml and pager.toml, override with environment variables, and manage project-scoped settings in .grok/ directories."
 ---
 
 Grok Build is configured through files in `~/.grok/` and can be overridden at runtime with environment variables and CLI flags. The main configuration file is `~/.grok/config.toml` for agent and session settings, and `~/.grok/pager.toml` for TUI appearance. You only need to set the values you want to change — if a file is missing, Grok falls back to its built-in defaults.
@@ -97,6 +97,12 @@ Within the config-file tier, layers merge lowest-to-highest: `managed_config.tom
 | `timeout_secs` | `120.0` | Foreground command timeout in seconds |
 | `output_byte_limit` | `20000` | Maximum captured output in bytes |
 
+### `[tools]` — Global tool settings
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `respect_gitignore` | `false` | When `true`, every tool skips gitignored files. Also configurable via `GROK_RESPECT_GITIGNORE`. |
+
 ### `[permission]` — Permission rules
 
 Define allow/deny/ask rules for tool actions. Rules apply with `deny` > `ask` > `allow` priority and merge across all config files.
@@ -118,6 +124,65 @@ tool = "Edit"
 ```
 
 Supported `tool` values: `Bash`, `Read`, `Edit`, `Grep`, `MCP`, `WebFetch`.
+
+### `[mcp_servers]` — MCP tool integrations
+
+Configure external tool integrations over the Model Context Protocol. MCP servers can also be set per-project in `.grok/config.toml`.
+
+```toml
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_PERSONAL_ACCESS_TOKEN = "ghp_xxx" }
+enabled = true                        # enable/disable (default: true)
+startup_timeout_sec = 30              # init timeout in seconds (default: 30)
+tool_timeout_sec = 6000               # tool call timeout in seconds (default: 6000)
+
+[mcp_servers.postgres]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@localhost/db"]
+
+[mcp_servers.my-streamable-server]
+url = "https://mcp.example.com/api/mcp"   # HTTP/SSE transport
+headers = { "x-mcp-session-id" = "{{session_id}}" }
+```
+
+Priority for `[mcp_servers]`: `.grok/config.toml` (current dir) > `<repo-root>/.grok/config.toml` > `~/.grok/config.toml`. Project-scoped MCP servers with the same name as a global server replace the global one entirely (not a merge).
+
+### `[memory]` — Cross-session memory
+
+Persist knowledge across sessions. Enable memory with `GROK_MEMORY=1`, `[memory] enabled = true`, or managed remote settings.
+
+```toml
+[memory]
+enabled = false                       # enable memory
+
+[memory.session]
+save_on_end = true                    # write metadata summary on session end
+
+[memory.search]
+max_results = 6                       # default number of results
+min_score = 0.7                       # minimum relevance score
+
+[memory.initial_injection]
+enabled = true                        # auto-inject memory on first turn
+min_score = 0.9                       # score threshold for first-turn injection
+```
+
+### `[auth]` — Authentication settings
+
+See [Authentication](/authentication) for the full story.
+
+```toml
+[auth]
+auth_provider_command = "/usr/local/bin/my-auth-provider"
+auth_provider_label = "Acme Corp"
+auth_token_ttl = 3600
+
+[grok_com_config.oidc]
+issuer = "https://acme.okta.com"
+client_id = "0oa1b2c3d4e5f6g7h8i9"
+```
 
 ---
 
@@ -240,25 +305,74 @@ truncated_lines = 3     # Lines shown in truncated mode
 
 The most important environment variables. See the Grok README for the complete list.
 
+### Authentication
+
 | Variable | Description |
 |----------|-------------|
 | `XAI_API_KEY` | API key from [console.x.ai](https://console.x.ai) |
-| `GROK_HOME` | Override config directory (default: `~/.grok`) |
-| `GROK_LOG_FILE` | Write logs to this file path |
-| `RUST_LOG` | Log level filter (e.g., `debug`); controls the `GROK_LOG_FILE` log and headless stderr output |
-| `GROK_OIDC_ISSUER` | OIDC issuer URL for enterprise SSO |
-| `GROK_OIDC_CLIENT_ID` | OIDC client ID |
 | `GROK_AUTH_PROVIDER_COMMAND` | Path to an external auth binary |
 | `GROK_AUTH_PROVIDER_LABEL` | Display name shown on the TUI login screen |
 | `GROK_AUTH_TOKEN_TTL` | Token lifetime in seconds |
+| `GROK_AUTH_EARLY_INVALIDATION_SECS` | Seconds before expiry to refresh the token (default: 300) |
+| `GROK_OIDC_ISSUER` | OIDC issuer URL for enterprise SSO |
+| `GROK_OIDC_CLIENT_ID` | OIDC client ID |
+
+### Endpoints
+
+| Variable | Description |
+|----------|-------------|
 | `GROK_CLI_CHAT_PROXY_BASE_URL` | Override the API proxy base URL |
-| `GROK_TELEMETRY_ENABLED` | Enable (`1`) or disable (`0`) usage telemetry |
-| `GROK_EXTERNAL_OTEL` | External OpenTelemetry to your own collector |
+
+### Features
+
+| Variable | Description |
+|----------|-------------|
 | `GROK_MEMORY` | Enable (`1`) or disable (`0`) cross-session memory |
-| `GROK_WORKFLOWS` | Enable (`1`) or disable (`0`) background workflows |
+| `GROK_SUBAGENTS` | Enable (`1`) or disable (`0`) subagents |
+| `GROK_WORKFLOWS` | Enable (`1`) or disable (`0`) background workflows and select the `/goal` driver |
+| `GROK_WEB_FETCH` | Enable (`1`) or disable (`0`) the `web_fetch` tool |
+| `GROK_WEB_FETCH_ALLOW_LOCAL` | Allow `web_fetch` to explicit loopback hosts only. Default off; private/metadata ranges stay blocked. |
+| `GROK_AGENT` | Custom agent definition path or name |
 | `GROK_SANDBOX` | Sandbox profile: `off`, `workspace`, `devbox`, `read-only`, `strict`, or a custom profile name |
+| `GROK_EXIT_TIMEOUT_SECS` | Seconds after quit before the process is force-exited if teardown hangs (default: 20; `0` disables) |
+
+### Logging
+
+| Variable | Description |
+|----------|-------------|
+| `GROK_LOG_FILE` | Write logs to this file path |
+| `RUST_LOG` | Log level filter (e.g., `debug`); controls the `GROK_LOG_FILE` log and headless stderr output |
+
+### Paths
+
+| Variable | Description |
+|----------|-------------|
+| `GROK_HOME` | Override config directory (default: `~/.grok`) |
+| `GROK_RESPECT_GITIGNORE` | Force gitignore filtering on (`1`) or off (`0`); overrides `[tools] respect_gitignore` |
+
+### Telemetry
+
+| Variable | Description |
+|----------|-------------|
+| `GROK_TELEMETRY_ENABLED` | Enable (`1`) or disable (`0`) usage telemetry |
+| `GROK_TELEMETRY_TRACE_UPLOAD` | Enable (`1`) or disable (`0`) session trace uploads |
+| `GROK_TELEMETRY_MIXPANEL_ENABLED` | Enable (`1`) or disable (`0`) Mixpanel product analytics specifically |
+| `GROK_EXTERNAL_OTEL` | External OpenTelemetry to your own collector (see Monitoring & Usage) |
+| `GROK_FEEDBACK_ENABLED` | Enable (`1`) or disable (`0`) the in-app feedback system |
+| `GROK_DEPLOYMENT_KEY` | Management API key for enterprise deployments |
+
+### Config overlay
+
+| Variable | Description |
+|----------|-------------|
 | `GROK_CONFIG` | Inline JSON config overlay (merged above `config.toml`, below `requirements.toml`) |
 | `GROK_CONFIG_PATH` | Path to an additional TOML or JSON config overlay file |
+
+### Appearance
+
+| Variable | Description |
+|----------|-------------|
+| `NO_COLOR` | When set, Grok emits no color and renders in monochrome |
 
 ---
 

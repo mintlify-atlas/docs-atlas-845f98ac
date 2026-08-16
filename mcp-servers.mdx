@@ -1,7 +1,7 @@
 ---
-title: "Extend Grok Build with MCP Servers"
+title: "Extend Grok Build with MCP Servers and Integrations"
 sidebarTitle: "MCP Servers"
-description: "Connect external tools to Grok Build using the Model Context Protocol. Configure stdio and HTTP/SSE transports, manage servers via CLI, and handle OAuth authentication."
+description: "Connect external tools to Grok Build via the Model Context Protocol. Configure stdio and HTTP/SSE transports, manage servers via CLI, and handle OAuth."
 ---
 
 MCP (Model Context Protocol) servers extend Grok with external tool integrations. Any service that implements the MCP standard can be connected — its tools become available alongside Grok's built-in capabilities. A GitHub MCP server might expose `create_issue` and `list_pull_requests`; a database server might expose `query` and `list_tables`. See the [MCP specification](https://modelcontextprotocol.io) for protocol details.
@@ -25,6 +25,15 @@ tool_timeout_sec = 6000               # Per-tool-call timeout fallback, seconds 
 tool_timeouts = { slow_op = 120 }     # Per-tool timeout overrides, seconds
 ```
 
+You can override the default startup timeout for all servers with the `MCP_TIMEOUT` environment variable (milliseconds, compatible with Claude Code) or `GROK_MCP_STARTUP_TIMEOUT_SECS` (seconds). A per-server `startup_timeout_sec` takes precedence over both.
+
+You can also cap the size of MCP tool results via `GROK_MAX_MCP_OUTPUT_BYTES` (or `MAX_MCP_OUTPUT_BYTES`), or in `config.toml`:
+
+```toml
+[mcp]
+max_output_bytes = 40000
+```
+
 ### HTTP/SSE Transport
 
 For remote MCP servers accessible over HTTP:
@@ -33,6 +42,14 @@ For remote MCP servers accessible over HTTP:
 [mcp_servers.remote-api]
 url = "https://mcp.example.com/api"
 headers = { "Authorization" = "Bearer token" }
+```
+
+### Streamable HTTP with Session ID
+
+```toml
+[mcp_servers.my-streamable-server]
+url = "https://mcp.example.com/api/mcp"
+headers = { "x-mcp-session-id" = "{{session_id}}" }
 ```
 
 ## CLI Management
@@ -118,7 +135,7 @@ The model also has access to two built-in tools: `search_tool` to discover avail
 
 ## MCP OAuth
 
-For MCP servers that require OAuth authentication, Grok handles the credential flow automatically. When a server requests OAuth credentials, Grok opens a browser-based authorization flow. The resulting tokens are stored in `~/.grok/mcp_credentials.json` as local plaintext with owner-only file permissions (`0600` on Unix). Prefer full-disk encryption on the host.
+For MCP servers that require OAuth authentication, Grok handles the credential flow automatically. When an MCP server requests OAuth credentials, Grok opens a browser-based authorization flow and stores the resulting tokens in `~/.grok/mcp_credentials.json` as local plaintext with owner-only file permissions (`0600` on Unix). Prefer full-disk encryption on the host. Grok registers its own OAuth client with the provider when using the native `url` form.
 
 To authenticate an OAuth server from the TUI, press `i` on the server in the `/mcps` modal.
 
@@ -152,7 +169,9 @@ Grok loads MCP server configurations from multiple sources:
 | `.cursor/mcp.json` | Cursor format | `~/.cursor/mcp.json`, `<project>/.cursor/mcp.json` | `[compat.cursor] mcps` |
 | `.mcp.json` | MCP standard format | Project root (cwd to git root) | Loaded unless import marker is set |
 
-All sources are merged in priority order: `config.toml` > Claude > Cursor > `.mcp.json`. Servers from higher-priority sources take precedence when names conflict. Use `grok inspect` to see which servers were loaded and their vendor origin.
+All sources are merged in priority order: `config.toml` > Claude > Cursor > `.mcp.json`. Servers from higher-priority sources take precedence when names conflict.
+
+To disable scanning for a specific vendor, set `[compat.<vendor>] mcps = false` in `~/.grok/config.toml`, or use the environment variables `GROK_CURSOR_MCPS_ENABLED` or `GROK_CLAUDE_MCPS_ENABLED`. Use `grok inspect` to see which servers were loaded and their vendor origin (`[cursor]`, `[claude]`).
 
 ## Subagents and MCP
 

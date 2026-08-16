@@ -1,7 +1,7 @@
 ---
 title: "Grok Build Hooks: Lifecycle Scripts and Safety Guards"
 sidebarTitle: "Hooks"
-description: "Use hooks to run scripts or HTTP requests at key moments in a Grok session — block dangerous commands, log tool use, auto-format code, and set up environment context."
+description: "Run scripts or HTTP requests at key moments in Grok Build — block dangerous commands, log tool use, auto-format code, and configure the environment."
 ---
 
 Hooks are shell commands or HTTP endpoints that Grok calls when a specific lifecycle event occurs. You can use them to automate tasks, enforce safety checks, log activity, send notifications, and integrate your own tools — all without modifying Grok itself.
@@ -348,7 +348,7 @@ chmod +x ~/.grok/hooks/bin/stop-verify.sh
 
 ### Slash Commands
 
-```
+```text
 /hooks              # Open the Hooks tab in the Extensions modal
 /hooks-list         # Show hooks loaded in this session
 /hooks-trust        # Trust this project for hook execution

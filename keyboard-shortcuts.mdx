@@ -1,7 +1,7 @@
 ---
-title: "Grok Build Keyboard Shortcuts and Key Bindings"
+title: "Grok Build Keyboard Shortcuts and Key Bindings Guide"
 sidebarTitle: "Keyboard Shortcuts"
-description: "Complete reference for all keyboard shortcuts in the Grok Build TUI — navigation, focus, agent control, Vim mode, mouse support, and terminal-specific bindings."
+description: "Complete reference for Grok Build TUI key bindings — navigation, Escape behavior, blocking cards, agent actions, and terminal-specific shortcuts."
 ---
 
 Grok Build's terminal UI is driven entirely by keyboard. All key bindings are built in and **cannot currently be remapped**. The shortcuts you have available depend on which of Grok's two input modes is active: **Simple** (the default) or **Vim** (opt-in).
@@ -88,6 +88,72 @@ Switch keyboard focus between the prompt input and the scrollback pane.
 
 ---
 
+## Escape
+
+| State | Gesture | Effect |
+|-------|---------|--------|
+| Turn running, **minimal mode or vim scrollback mode off (the default)** | `Esc` | Cancel immediately (prompt or scrollback focused, even with a draft — the draft is **preserved**, unlike Ctrl+C's clear-first gesture). |
+| Turn running, **fullscreen vim mode** | `Esc` | Swallowed no-op (does **not** cancel). Use `Ctrl+C` (or palette / other cancel entry points). |
+| Turn cancelling | `Esc` | Re-sends cancel in **every** mode (retry if the first ack was lost). `Ctrl+C` in this state escalates toward quit. |
+| Idle + non-empty prompt (text or image chips), **prompt focused** | **2× `Esc` within 800 ms** | Clear the prompt; non-empty text is saved to prompt history. First press shows "press again to clear". |
+| Idle + empty prompt + conversation messages, **prompt or scrollback focused** | **2× `Esc` within 800 ms** | Open the rewind picker (same as `/rewind`). First press is silent (no toast). |
+| Idle + empty + no messages, **or scrollback focused with a draft / moded (`!` `#`) composer / pending needs-input overlay / open history search** | `Esc` | Swallowed no-op. Clear is prompt-pane only; rewind requires an empty Normal-mode composer, no pending overlay, and no open history search. |
+
+**Post-cancel grace:** for about a second after an Esc-triggered cancel, the idle rewind arm stays suppressed — mashing `Esc` to stop a turn cannot silently open the rewind picker.
+
+**Steal-Esc (runs before mid-turn cancel / swallow and clear / rewind):** overlays, modals, slash/file/completion dropdowns, history search, scrollback search, text selection, link highlight, voice, and **Bash / Remember mode exit** when the prompt is empty (`Esc` leaves `!` / `#` mode and returns to the normal prompt, even while a turn is running).
+
+**Ctrl+C vs Esc:** with a non-empty draft while a turn is running, `Ctrl+C` clears the draft and keeps the turn; a second `Ctrl+C` on an empty prompt cancels. `Esc` cancels immediately and preserves the draft (in fullscreen vim mode it does not cancel). Idle non-empty `Ctrl+C` clears in one press; `Esc` requires two presses within 800 ms.
+
+---
+
+## Blocking Cards
+
+Three surfaces block the agent on your answer and take over the keyboard while they are open: the **question card** (`ask_user_question`), the **permission prompt**, and the **cancel-turn panel**. When more than one is open, the permission prompt has the keyboard first, then the cancel-turn panel, then the question card — the shortcuts bar always shows the keys of whichever one is receiving input.
+
+All three share one contract: `Tab` / `Shift+Tab` walk that card's rows and wrap at both ends, never moving focus out of the card. `Esc` steps back one rung at a time — clearing whatever the card has pending first, and only leaving once nothing remains to clear.
+
+### Question Card (`ask_user_question`)
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓`, `j` / `k` | Move between answers (clamped at the ends) |
+| `Tab` / `Shift+Tab` | Walk this question's answers in a loop |
+| `←` / `→`, `h` / `l`, `[` / `]` | Previous / next question |
+| `1`–`9`, `a`–`f` | Pick that answer directly |
+| `z` | Jump to the free-text row and start typing |
+| `Space` | Toggle the focused answer (multi-select), or start typing on the free-text row |
+| `Enter` | Select and advance, submit on the last question, or edit the free-text row |
+| `Esc` | Unselect this question's answer; with nothing selected, park focus in the scrollback (`Tab` returns) |
+| `y` | Copy the focused answer |
+| `Shift+X` | Dismiss the question (the agent continues without an answer) |
+| `Ctrl+F` | Fullscreen the card |
+
+### Permission Prompt
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓`, `j` / `k` | Move between options (clamped at the ends) |
+| `Tab` / `Shift+Tab` | Walk the options in a loop |
+| `1`–`9` | Choose that option directly |
+| `Enter` | Choose the focused option |
+| `←` / `→` | Widen / narrow the scope an "always" answer would remember |
+| `e` | Edit the always-allow pattern by hand (bash prompts) |
+| `Ctrl+F` | Expand / collapse the full arguments |
+| `Ctrl+O` | Turn on always-approve mode |
+| `Esc` | Park focus in the scrollback (`Tab` returns). It never answers or dismisses the request |
+| `Ctrl+C` | Cancel the request |
+
+### Cancel-Turn Panel
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓`, `j` / `k`, `Tab` / `Shift+Tab` | Move between the choices |
+| `1`–`4`, `Enter` | Confirm that choice |
+| `Esc` | Keep everything running. This resolves the panel and is never a dead end |
+
+---
+
 ## During an Active Turn
 
 While the agent is generating, the follow-up behavior depends on your `[ui].follow_up_behavior` setting (`"queue"` by default):
@@ -170,6 +236,55 @@ To return to the welcome screen, use the `/home` slash command (alias `/welcome`
 
 ---
 
+## Welcome Screen
+
+Bindings that only fire on the welcome screen (before any agent session is open).
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+S` | Resume session (open the session picker) |
+| `Ctrl+W` | Open the New Worktree dialog (only inside a git repository) |
+| `Ctrl+I` | Import Claude settings (when available) |
+| `Ctrl+Shift+I` | Dismiss the Claude import row (when available) |
+
+`Ctrl+W`, `Ctrl+I`, and `Ctrl+Shift+I` are only active on the welcome screen. `Ctrl+S` also opens the session picker from inside an agent session as a modal overlay.
+
+---
+
+## Agent Dashboard
+
+Bindings while the Agent Dashboard is focused (`Ctrl+\` or `/dashboard`).
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓`, `j` / `k` | Navigate agent rows (selecting a row opens peek) |
+| `Enter` | Open the selected agent, or send a typed peek reply / dispatch prompt |
+| `Ctrl+S` | Reply or dispatch **and** attach to that agent |
+| `Ctrl+/` | Toggle search / filter mode |
+| `Ctrl+R` | Rename the selected agent |
+| `Ctrl+T` | Pin / unpin |
+| `Ctrl+G` | Toggle grouping (state ↔ working directory) |
+| `Ctrl+X` | Cancel a running turn, or press twice within 2 s to permanently delete |
+| `Ctrl+O` | Toggle always-approve on the selected agent |
+| `Tab` | Toggle focus between the list and the dispatch / peek input |
+| `Esc` | Step back (cancel search → close peek → clear filter → unfocus → unselect → exit) |
+| `Ctrl+\` | Exit the dashboard (or return from an attached agent) |
+| `Ctrl+.` (alt: `?`) | Shortcuts cheatsheet |
+
+---
+
+## Command Palette
+
+Press `Ctrl+P` or `?` to open the command palette — a searchable list of all actions, keyboard shortcuts, slash commands, and available skills. Type to filter, then press `Enter` to execute the selected action.
+
+---
+
+## Shortcuts Bar
+
+The bottom of the TUI displays a contextual shortcuts bar showing the most relevant key bindings for the current state. The hints change based on which pane is focused (scrollback vs. prompt), whether the agent is running, and what type of entry is selected. When a blocking card is active, the bar shows that card's keys and names it in the focus hint so you always know how to return.
+
+---
+
 ## Mouse Support
 
 The TUI supports mouse interaction in all terminals that report mouse events:
@@ -212,7 +327,7 @@ Non-image files insert their absolute path as text instead of a chip.
 
 ### Simple Mode (Default) — Scrollback Focused
 
-```
+```text
 Navigation:   Up/Down (prev/next entry)    Shift+Left/Right (prev/next turn)
 Scrolling:    Ctrl+J/K (line)   PgUp/PgDn (page)   Ctrl+U/D (half page)
 Focus prompt: Space or any letter key (auto-focuses and types)
@@ -220,7 +335,7 @@ Focus prompt: Space or any letter key (auto-focuses and types)
 
 ### Vim Mode — Scrollback Focused
 
-```
+```text
 Navigation:   j/k (up/down)    H/L (prev/next turn)    K/J (prev/next response)
               g/G (top/bottom)
 Scrolling:    Ctrl+J/K (line)  Ctrl+U/D (half page; D=Shift+D in VSCode)
@@ -233,7 +348,7 @@ Focus prompt: i, Tab, or Space
 
 ### Prompt Focused (Both Modes)
 
-```
+```text
 Send:             Enter
 Newline:          Shift+Enter or Alt+Enter
 Multiline toggle: Ctrl+M
@@ -247,7 +362,7 @@ Rewind (idle):    Esc Esc within 800 ms (empty prompt + messages)
 
 ### Always Available
 
-```
+```text
 Command palette:  Ctrl+P or ?
 Model picker:     Ctrl+M (from scrollback)
 Cancel:           Ctrl+C

@@ -1,5 +1,5 @@
 ---
-title: "Headless Mode: Run Grok Build Non-Interactively via CLI"
+title: "Run Grok Build Headlessly for Scripts and CI/CD"
 sidebarTitle: "Headless Mode"
 description: "Use grok -p to run prompts non-interactively. Supports plain, JSON, and streaming-JSON output. Covers session flags, exit codes, and CI/CD scripting."
 ---
@@ -145,7 +145,7 @@ Key environment variables:
 | --- | --- |
 | `XAI_API_KEY` | API key for authentication (required when no browser login) |
 | `GROK_HOME` | Override config directory (default: `~/.grok`) |
-| `GROK_LOG_FILE` | Path to a log file (used verbatim as the path; works in headless and TUI, honors `RUST_LOG`) |
+| `GROK_LOG_FILE` | Path to a log file (works in headless and TUI, honors `RUST_LOG`) |
 | `RUST_LOG` | Log level filter (e.g. `debug`). Headless logs go to stderr. |
 
 ---
@@ -241,7 +241,7 @@ On SIGINT or SIGTERM, session state is saved up to the last completed tool call.
 
 ## Debug Logging
 
-In headless mode, `RUST_LOG` defaults to `off` so only the answer is printed. Set `RUST_LOG=error` (or broader) to see diagnostic logs on stderr. Raise the log level and redirect stderr to capture diagnostics:
+Raise the log level with `RUST_LOG` and redirect stderr to capture diagnostics:
 
 ```bash
 RUST_LOG=debug grok -p "Your prompt here" 2> debug.log

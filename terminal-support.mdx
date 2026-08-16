@@ -68,11 +68,11 @@ Grok edits only the persistent config (not the live tmux server) and makes a bac
 | Alacritty | macOS, Linux | Supported |
 | Rio | macOS, Linux | Supported |
 | GNOME Terminal / Console / Tilix (VTE) | Linux | Supported |
-| Konsole | Linux | Supported; handles RTL text |
 | foot | Linux (Wayland) | Wayland-native; supported |
 | Windows Terminal | Windows | Supported |
 | VS Code / Cursor / Windsurf / Zed | Cross-platform | Special key mappings; see terminal-specific notes below |
 | JetBrains IDE terminals | Cross-platform | Supported |
+| Grok Desktop | — | Supported |
 | Warp | macOS | Supported |
 | tmux | Multiplexer | `extended-keys on` recommended; use `grok wrap` for nested SSH |
 | Zellij | Multiplexer | Use Unlock-First preset to avoid key conflicts |
@@ -126,15 +126,9 @@ Grok edits only the persistent config (not the live tmux server) and makes a bac
   <Accordion title="VS Code family key differences">
     VS Code, Cursor, Windsurf, and Zed terminals use xterm.js, which only partially implements the Kitty keyboard protocol and mis-encodes some shifted printable keys. Grok does not negotiate the protocol in these terminals.
 
-    Key differences in VS Code terminals:
-
-    - **`Shift+Enter`** may arrive as a plain `Enter`. Use **`Alt+Enter`** to insert a newline instead.
-    - **`Ctrl+L`** is used for interject (instead of `Ctrl+Enter`).
-    - **`Ctrl+D`** is used for quit.
+    `Shift+Enter` may arrive as the same `CR` as plain `Enter`. Use **`Alt+Enter`** to insert a newline instead. This also affects VS Code reached over SSH when `TERM_PROGRAM` is not forwarded.
 
     Run `/doctor` — it reports `terminal.newline-fallback` with the detected explanation and workaround.
-
-    This also affects VS Code reached over SSH when `TERM_PROGRAM` is not forwarded.
   </Accordion>
 
   <Accordion title="SSH clipboard issues">
@@ -239,15 +233,7 @@ Then reload your tmux config and detach/reattach.
 
 ### VS Code, Cursor, Windsurf, and Zed
 
-These terminals use xterm.js with partial Kitty keyboard support. Key mapping differences:
-
-| Action | Standard | VS Code family |
-| --- | --- | --- |
-| Interject | `Ctrl+Enter` | `Ctrl+L` |
-| Quit | `Ctrl+D` | `Ctrl+D` |
-| Insert newline | `Shift+Enter` | `Alt+Enter` |
-
-Run `/doctor` for a full list of detected differences in your specific terminal.
+These terminals use xterm.js with partial Kitty keyboard support and mis-encode some shifted printable keys. Grok does not negotiate the Kitty keyboard protocol in these terminals. `Shift+Enter` may arrive as plain `Enter` — use `Alt+Enter` to insert a newline instead. Run `/doctor` for the detected explanation and workaround (`terminal.newline-fallback`).
 
 ### WezTerm
 
@@ -261,7 +247,6 @@ Add `enable_kitty_keyboard = true` to your WezTerm Lua config to enable `Ctrl+En
 
 ```bash
 grok wrap ssh user@host
-grok wrap docker exec -it my-container bash
 ```
 
 This is especially useful when:

@@ -1,7 +1,7 @@
 ---
-title: "Grok Build Slash Commands Reference"
+title: "Grok Build Slash Commands: Complete Reference Guide"
 sidebarTitle: "Slash Commands"
-description: "Complete reference for all / commands in Grok Build — session management, model switching, memory, hooks, plugins, media generation, scheduling, and account settings."
+description: "Complete reference for all slash commands in Grok Build — session management, model switching, memory, plugins, media generation, scheduling, and more."
 ---
 
 Type `/` in the Grok Build prompt to open the fuzzy command menu. As you type, the list filters in real time. Press `Tab` or `Enter` to accept the highlighted command and run it immediately.
@@ -24,10 +24,10 @@ Open the **Agent Dashboard** — a live roster of top-level sessions with peek, 
 ### `/compact [context]`
 Compress conversation history to reclaim context-window space. Pass an optional note to tell Grok what to preserve:
 
-```
+```text
 /compact
 /compact keep the auth implementation details
-```
+```text
 
 Grok also auto-compacts once the context window hits 85% (tunable with `[session] auto_compact_threshold_percent`).
 
@@ -40,25 +40,25 @@ Show session details: auth method, model, turn count, and context usage. Aliases
 ### `/fork`
 Branch the current session into a new agent, preserving history up to this point.
 
-### `/rewind`
-Roll the conversation back to an earlier turn and discard everything after it. Alias: `/undo`.
+### `/rewind` (alias: `/undo`)
+Roll the conversation back to an earlier turn and discard everything after it. `/undo` is the same command.
 
 ### `/edit-prompt`
 In minimal mode, open an external editor for an empty composer. Grok resolves `$VISUAL`, then `$EDITOR`, then `vi`. Saving replaces the draft without sending it; saving an empty file clears it. Hidden outside minimal mode.
 
-```
+```text
 /edit-prompt
-```
+```text
 
 ### `/copy`
 Copy the most recent response to the clipboard. Pass a number to copy the *N*th-latest response, or a file path to write to a file instead of the clipboard (useful over SSH):
 
-```
+```text
 /copy
 /copy 2
 /copy out.txt
 /copy 2 ~/exports/last-reply.md
-```
+```text
 
 Every copy is also written to a backup file at `~/.grok/last-copy.txt` (or `GROK_COPY_FILE` if set).
 
@@ -77,10 +77,10 @@ Delete the current session's history (confirms first). Stops any running turn, b
 ### `/rename`
 Rename the current session. Alias: `/title`.
 
-```
+```text
 /rename new session title
 /rename --auto
-```
+```text
 
 `--auto` unpins a manual title and lets auto-titling resume (Build sessions only). It must be the only argument.
 
@@ -91,18 +91,18 @@ Rename the current session. Alias: `/title`.
 ### `/model <name>`
 Switch models. Accepts a model ID or display name (case-insensitive); for reasoning models you can also pass an effort level as a second argument. Alias: `/m`.
 
-```
+```text
 /model grok-build
 /model Grok Build
 /model Reasoning X high
-```
+```text
 
 ### `/effort <level>`
 Set reasoning effort on the **current** model without reselecting it. Levels: `low`, `medium`, `high`, `xhigh`. Only applies when the active model supports reasoning effort.
 
-```
+```text
 /effort high
-```
+```text
 
 ### `/always-approve` and `/auto`
 Both are real toggles for permission mode — running the mode you are already in switches it back off:
@@ -134,9 +134,9 @@ Reopen the current session in the other render mode. `/minimal` switches to scro
 ### `/plan`
 Enter plan mode.
 
-```
+```text
 /plan [description]
-```
+```text
 
 ### `/view-plan`
 Open a preview of the current saved plan. Aliases: `/show-plan`, `/plan-view`.
@@ -150,10 +150,10 @@ Open a preview of the current saved plan. Aliases: `/show-plan`, `/plan-view`.
 ### `/memory`
 Browse, view, and manage saved memories. Pass `on` or `off` to enable or disable memory. Alias: `/mem`.
 
-```
+```text
 /memory
 /memory off
-```
+```text
 
 ### `/flush`
 Save the current session's knowledge to memory right now, triggering an LLM summary of the most important content. Useful before compaction or when you want to lock in context.
@@ -164,9 +164,9 @@ Run memory consolidation — merge session logs into organized topics.
 ### `/remember`
 Save a note to memory immediately, without waiting for an automatic summary.
 
-```
+```text
 /remember the staging deploy uses the eu-west cluster
-```
+```text
 
 ---
 
@@ -193,16 +193,16 @@ Open the extensions modal on the **Skills** tab. View all installed skills.
 ### `/imagine <description>`
 Generate an image from a text description.
 
-```
+```text
 /imagine a golden sunset over a calm ocean with silhouetted palm trees
-```
+```text
 
 ### `/imagine-video <description>`
 Generate a video from a text (or image) description. Grok plans shots, generates source images, and animates them.
 
-```
+```text
 /imagine-video a cat playing piano in a jazz club
-```
+```text
 
 ---
 
@@ -211,10 +211,10 @@ Generate a video from a text (or image) description. Grok plans shots, generates
 ### `/loop [interval] <prompt>`
 Run a prompt on a recurring interval. Specify the interval as `30m`, `1 hour`, or `every 2 days`; omit it and Grok will ask.
 
-```
+```text
 /loop 30m check deploy status
 /loop check deploy status every hour
-```
+```text
 
 Intervals: `Ns` (seconds, minimum 60), `Nm` (minutes), `Nh` (hours), `Nd` (days). Recurring tasks expire after 7 days; cancel one with `scheduler_delete` using the job ID reported at creation.
 
@@ -225,33 +225,33 @@ Intervals: `Ns` (seconds, minimum 60), `Nm` (minutes), `Nh` (hours), `Nd` (days)
 ### `/goal`
 Set, manage, or check an autonomous goal. Grok works across rounds and only marks a goal complete after an independent evidence review confirms the claim.
 
-```
+```text
 /goal Migrate the auth module to the new API
 /goal status
 /goal pause
 /goal resume
 /goal clear
-```
+```text
 
 Arguments: `<objective> [--budget <tokens>]`, or one of `status`, `pause`, `resume`, `clear`.
 
 ### `/deep-research <query>`
 Kick off a background research workflow. Grok plans a bounded set of questions, gathers structured claims with source evidence, cross-checks each claim, and renders only those that survive verification. Returns immediately — follow progress in `/workflows`.
 
-```
+```text
 /deep-research Compare the migration risks of PostgreSQL 17 and MySQL 9
-```
+```text
 
 ### `/workflow`
 Launch a saved workflow, or manage a running one by its display name as shown in `/workflows`.
 
-```
+```text
 /workflow review-changes {"target":"origin/main...HEAD"}
 /workflow pause review-changes
 /workflow resume review-changes
 /workflow stop review-changes-2
 /workflow save review-changes
-```
+```text
 
 Project workflows live in `.grok/workflows/*.rhai`; user workflows in `~/.grok/workflows/*.rhai`.
 
@@ -268,17 +268,17 @@ Switch the color theme. Alias: `/t`. See [Theming](/theming) for available theme
 ### `/feedback [message]`
 Report an issue or send feedback. A message sends immediately; without one, a pane opens for a longer report (`Enter` sends, `Esc` discards).
 
-```
+```text
 /feedback
 /feedback Something isn't working correctly
-```
+```text
 
 ### `/btw`
 Send an aside to the agent without interrupting the current task. The side question and its answer are not part of the main turn.
 
-```
+```text
 /btw also check the error handling
-```
+```text
 
 ### `/mcps`
 Open the MCP servers management modal.
@@ -290,15 +290,17 @@ Check the current session for terminal, clipboard, color, input, notification, a
 View release notes for the current version. Alias: `/changelog`.
 
 ### `/docs`
-Browse the built-in How-to Guides, open the online Build docs, or jump to a guide by title.
+Browse the built-in How-to Guides, open the online Build docs, or jump straight to a guide by title. Aliases: `/howto`, `/guides`.
 
-```
+```text
 /docs
 /docs web
 /docs Getting Started
-```
+```text
 
-Aliases: `/howto`, `/guides`.
+- Bare `/docs` (or `/docs how-to`) opens the How-to Guides picker.
+- `/docs web` opens https://docs.x.ai/build/overview in your browser.
+- `/docs <title>` opens a specific guide by case-insensitive title match.
 
 ### `/tutorial`
 Open the onboarding tutorial — a short list of topics covering first prompts, attaching context, navigation, slash commands, worktrees, plan mode, customization, and switching from another agent tool. Nothing auto-shows; this command (or the palette) is the only way in.
@@ -331,10 +333,10 @@ Log out and return to the login screen.
 ### `/usage`
 View credit usage or manage billing. Alias: `/cost`.
 
-```
+```text
 /usage
 /usage manage
-```
+```text
 
 ### `/privacy`
 Open Settings on **Coding data, retention, and training** to choose Opt in or Opt out. On team accounts, only a team admin can change this setting.
@@ -355,19 +357,19 @@ Toggle message timestamps on or off.
 
 Any enabled skill with `user-invocable: true` in its `SKILL.md` frontmatter appears in the slash command menu. Turn a skill off via `/skills` to stop it being advertised. A skill at `~/.grok/skills/commit/SKILL.md` runs as:
 
-```
+```text
 /commit fix typo in README
-```
+```text
 
 Skills from plugins work the same way.
 
 <Tip>
 When two skills share the same name across scopes, qualify the invocation to disambiguate:
 
-```
+```text
 /local:commit      # Project-scoped skill (from .grok/skills/)
 /user:commit       # User-scoped skill (from ~/.grok/skills/)
-```
+```text
 
 Built-in commands always win the bare name. Both the built-in (tagged `built-in`) and the skill (tagged `skill · local` or `skill · plugin-name`) appear in the slash menu so you can see the collision.
 </Tip>

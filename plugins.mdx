@@ -1,7 +1,7 @@
 ---
 title: "Grok Build Plugins: Install and Create Marketplaces"
 sidebarTitle: "Plugins"
-description: "Install plugin bundles from marketplaces, manage trust and permissions, create your own marketplace, and distribute plugins across your organization in Grok Build."
+description: "Install plugin bundles from marketplaces, manage trust and permissions, create your own marketplace, and distribute plugins across your organization."
 ---
 
 Plugins bundle skills, slash commands, agents, hooks, and MCP servers into one installable unit. You get plugins from a marketplace, install the ones you want, and Grok loads everything they add. A plugin's hooks and MCP servers stay inactive until you trust it.
@@ -19,8 +19,13 @@ A marketplace source is a GitHub repository, a git URL on any host, or a local f
 
 ```bash
 grok plugin marketplace add my-org/team-plugins                  # GitHub shorthand (owner/repo)
-grok plugin marketplace add https://gitlab.com/acme/plugins.git  # any git host
+grok plugin marketplace add https://gitlab.com/acme/plugins.git  # any git host, include https:// and .git
 grok plugin marketplace add ./my-marketplace                     # a local folder
+
+# List, refresh, and remove sources
+grok plugin marketplace list
+grok plugin marketplace update [<name>]
+grok plugin marketplace remove <url>
 ```
 
 You can also declare sources in config so they are always present.
@@ -76,11 +81,18 @@ A plugin's skills appear in the slash menu. When a skill name is ambiguous, Grok
 | Command | Description |
 |---------|-------------|
 | `grok plugin list [--json] [--available]` | List installed plugins (`--available` requires `--json`) |
+| `grok plugin install <source> [--trust]` | Install a plugin from a marketplace, git URL, or local path |
 | `grok plugin uninstall <name> [--confirm] [--keep-data]` | Remove a plugin (aliases: `rm`, `remove`) |
 | `grok plugin update [<name>]` | Update one plugin or all plugins |
 | `grok plugin enable <name>` | Enable a plugin |
 | `grok plugin disable <name>` | Disable a plugin |
 | `grok plugin details <name>` | Show the plugin's component inventory |
+| `grok plugin marketplace add <source>` | Add a marketplace source |
+| `grok plugin marketplace list` | List configured marketplace sources |
+| `grok plugin marketplace update [<name>]` | Refresh one or all marketplace sources |
+| `grok plugin marketplace remove <url>` | Remove a marketplace source and its plugins |
+| `grok plugin validate [<path>]` | Validate a plugin before publishing |
+| `grok plugin tag [<path>] [--push]` | Tag a release from the manifest version |
 
 ### In the Terminal UI
 

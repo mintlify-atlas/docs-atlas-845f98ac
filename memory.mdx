@@ -1,7 +1,7 @@
 ---
-title: "Cross-Session Memory in Grok Build"
+title: "Grok Build Cross-Session Memory (Experimental Feature)"
 sidebarTitle: "Memory"
-description: "Enable and use cross-session memory in Grok Build to persist facts, decisions, and patterns across sessions. Manage memories with /flush, /dream, and /memory."
+description: "Enable cross-session memory in Grok Build to persist facts and decisions. Manage memory with /flush, /dream, /remember, and the /memory browser."
 ---
 
 Memory lets Grok recall facts, decisions, and patterns from earlier sessions. When enabled, Grok indexes the information you save and searches it automatically at the start of each new session. Memory is **experimental** and **disabled by default**.
@@ -52,7 +52,7 @@ export GROK_MEMORY=0
 
 Toggle memory on or off during a session without restarting:
 
-```
+```text
 /memory on
 /memory off
 ```
@@ -83,7 +83,7 @@ An SQLite index (`index.sqlite`) supports search across all memory files:
 
 ### /flush — Save This Session Now
 
-```
+```text
 /flush
 ```
 
@@ -91,7 +91,7 @@ Triggers an LLM-generated summary of the current session's most important conten
 
 ### /remember — Save a Note Immediately
 
-```
+```text
 /remember always open PR links after pushing
 ```
 
@@ -99,7 +99,7 @@ Run `/remember` with no text to enter remember mode, where the next line you typ
 
 You can also ask Grok conversationally:
 
-```
+```text
 > remember to always open PR links after pushing
 ```
 
@@ -107,7 +107,7 @@ Grok appends the note to `MEMORY.md` under organized headings like `## Preferenc
 
 ### /dream — Consolidate Session Logs
 
-```
+```text
 /dream
 ```
 
@@ -123,7 +123,7 @@ When a session ends, Grok saves a structured metadata summary to a dated session
 
 ### /memory — Browse the Memory Browser
 
-```
+```text
 /memory
 ```
 
@@ -154,7 +154,7 @@ On the first turn of each session, Grok automatically searches memory for conten
 
 You can trigger memory searches manually in the chat:
 
-```
+```text
 Search memory for "auth middleware patterns"
 Read my workspace MEMORY.md
 ```
@@ -163,13 +163,49 @@ The model has access to two memory tools during sessions:
 - `memory_search` — search across all memory using hybrid FTS5 + vector similarity
 - `memory_get` — read a specific memory file by path
 
+### Search Scoring
+
+The default embedding model is unset, so memory starts in full-text-only mode. If you configure an embedding model, search combines vector similarity (weight `0.7`) with BM25 text similarity (weight `0.3`). Results are filtered by a minimum score threshold (default: `0.7`).
+
+### Source Weights
+
+Each memory source has a weight multiplier applied to its score. All sources default to `1.0`, and you can adjust any of them under `[memory.search.source_weights]`:
+
+| Source | Weight | Description |
+|--------|--------|-------------|
+| `workspace` | 1.0 | Project-specific memory |
+| `session` | 1.0 | Session logs |
+| `global` | 1.0 | Cross-project memory |
+
+### Temporal Decay
+
+Session memories decay over time so recent sessions are prioritized:
+
+```toml
+[memory.search.temporal_decay]
+enabled = true           # Enable time-based decay
+half_life_days = 30.0    # Score halves after this many days
+```
+
+Only session chunks decay. Global and workspace memories are exempt since they contain curated long-term knowledge.
+
+### MMR (Maximal Marginal Relevance)
+
+MMR re-ranking penalizes redundant results to improve diversity:
+
+```toml
+[memory.search.mmr]
+enabled = true           # Enable diversity re-ranking
+lambda = 0.7             # 0.0 = max diversity, 1.0 = pure relevance
+```
+
 ---
 
 ## Forgetting Memories
 
 Ask Grok to forget something conversationally:
 
-```
+```text
 > forget the snake_case convention
 ```
 
@@ -179,7 +215,7 @@ Or delete individual session files directly in the `/memory` browser by pressing
 
 ## Dream Consolidation
 
-```
+```text
 /dream
 ```
 
@@ -290,7 +326,63 @@ These live under `[compaction]` because flush is triggered by compaction events:
 | `max_flush_write_chars` | `8000` | Maximum characters the flush may write to memory |
 | `flush_model` | unset | Model for the flush turn. When unset, uses the session's primary model. |
 | `idle_timeout_secs` | `300` | Idle seconds before a background flush. Set `0` to disable. |
-| `semantic_dedup_threshold` | `0.92` | Cosine-similarity threshold for de-duplicating flushed content |
+| `semantic_dedup_threshold` | unset | Cosine-similarity threshold for de-duplicating flushed content. When unset, defaults to `0.92`. |
+
+## Memory Staleness
+
+When a session memory is old, Grok attaches a staleness note to it in search results. Older results get a stronger reminder to verify the current state before you rely on them. Global and workspace memories never receive staleness notes, because they hold curated long-term knowledge.
+
+---
+
+## File Watcher
+
+By default, Grok watches `~/.grok/memory/` for external file changes. If you edit memory files directly (for example, in your editor), the changes are picked up automatically on the next memory search:
+
+- Created or modified files are reindexed.
+- Deleted files have their stale chunks removed from the index.
+
+```toml
+[memory.watcher]
+enabled = true    # default
+```
+
+---
+
+### Pruning Settings (`[compaction.pruning]`)
+
+These live under `[compaction]` because pruning is a compaction behavior:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable tool-result pruning |
+| `keep_last_n_turns` | `3` | Number of recent turns whose tool results are never pruned |
+| `soft_trim_threshold` | `4000` | Character threshold above which old tool results are soft-trimmed |
+| `soft_trim_head` | `1500` | Characters kept from the start of a soft-trimmed result |
+| `soft_trim_tail` | `1500` | Characters kept from the end of a soft-trimmed result |
+| `hard_clear_age_turns` | `10` | Turn age after which tool results are replaced with a placeholder |
+
+---
+
+## Troubleshooting
+
+**Memory not working?** Verify memory is enabled by running `grok inspect` and checking the output. Also check whether `GROK_MEMORY` or `[memory] enabled` is set in your effective TOML, and watch for `GROK_MEMORY=0` overriding your config.
+
+**Memory not appearing in sessions?** Memory is injected on the first turn. If you started a session before enabling memory, start a new session with `/new`.
+
+**Viewing memory files directly:**
+
+```bash
+ls ~/.grok/memory/
+cat ~/.grok/memory/MEMORY.md
+$EDITOR ~/.grok/memory/MEMORY.md
+```
+
+**Debug logging:**
+
+```bash
+RUST_LOG=debug GROK_LOG_FILE=/tmp/grok.log grok
+grep "memory" /tmp/grok.log
+```
 
 ---
 

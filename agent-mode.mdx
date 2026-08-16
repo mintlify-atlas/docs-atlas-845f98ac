@@ -1,7 +1,7 @@
 ---
-title: "Agent Mode: Integrate Grok Build via ACP JSON-RPC"
+title: "Agent Mode: Grok Build ACP JSON-RPC Server Integration"
 sidebarTitle: "Agent Mode"
-description: "Run Grok Build as a long-lived ACP JSON-RPC server for IDE and SDK integration. Covers stdio and WebSocket transports, protocol lifecycle, and TypeScript examples."
+description: "Run Grok Build as an ACP server over stdio or WebSocket for IDE and SDK integration. Covers session lifecycle, streaming updates, and TypeScript examples."
 ---
 
 Agent mode runs Grok as a long-lived server that clients communicate with over [ACP](https://agentclientprotocol.com) (Agent Client Protocol), a JSON-RPC 2.0 protocol. Clients — IDEs, SDKs, eval harnesses, and custom apps — connect to the running agent, create sessions, send prompts, and receive streaming updates. The agent process stays alive between requests, so session state and MCP connections persist across turns.
@@ -58,7 +58,8 @@ grok agent --always-approve serve --bind 127.0.0.1:2419 --secret <token>
 | Flag | Description |
 | --- | --- |
 | `--always-approve` / `--yolo` | Run without interactive tool-permission prompts |
-| `--no-leader` | Force a local agent instead of connecting to a shared leader process |
+| `--reauth` | Authenticate before the agent starts |
+| `--leader` / `--no-leader` | Connect to a shared leader process (`--leader`), or force a fresh standalone agent (`--no-leader`). When a non-`off` sandbox profile is requested, leader mode is refused automatically so tools stay in-process |
 | `--plugin-dir <PATH>` | Load plugins from a directory (repeatable); plugins are auto-trusted |
 | `--bind <HOST:PORT>` | Bind address for `serve` mode (default: `127.0.0.1:2419`) |
 | `--secret <TOKEN>` | Authentication token for WebSocket clients |
@@ -77,7 +78,7 @@ Communication follows [JSON-RPC 2.0](https://www.jsonrpc.org/specification). A t
 4. **Receive updates** — agent sends `session/update` notifications with streamed content
 5. **Handle permissions** — agent may request tool-execution approval (unless `--always-approve`)
 
-```
+```text
 +------------------------------------------+
 |           ACP Client                     |
 |  (IDE, Editor, Custom Application)       |
@@ -119,6 +120,7 @@ Beyond the base ACP protocol, Grok defines extension methods under the `x.ai/` p
 | Session Management | `x.ai/session/*` | `fork`, `resolve_local_for_worktree_resume` |
 | Conversation | `x.ai/*` | `prompt_history`, `rewind/*`, `compact_conversation` |
 | Authentication | `x.ai/auth/*` | `get_url`, `submit_code` |
+| Feedback & Telemetry | `x.ai/*` | `feedback`, `telemetry/*` |
 
 The `x.ai/*` set is SpaceXAI-specific and may expand across releases. Discover available methods from the agent's `initialize` response.
 

@@ -1,7 +1,7 @@
 ---
 title: "Plan Mode: Structured Planning Before Coding in Grok Build"
 sidebarTitle: "Plan Mode"
-description: "Use Plan mode in Grok Build to let the agent explore and design an approach before writing any code. Review and approve the plan before implementation begins."
+description: "Plan mode keeps the agent read-only until you approve plan.md. Covers how to enter plan mode, lifecycle states, approval controls, and compaction behavior."
 ---
 
 Plan mode is a structured planning phase where the agent explores the codebase and designs an implementation approach **before writing any code**. When plan mode is active, the agent is read-only (except for writing to the plan file itself) — it cannot edit project files until you review and approve its proposed plan. Use it for tasks with genuine ambiguity about the right approach, where getting your input before coding prevents significant rework.
@@ -21,39 +21,24 @@ Plan mode is read-only except for the plan file. Plan-file edits are auto-approv
 
 ## Entering Plan Mode
 
-### At Launch
+### Agent-Initiated Entry
 
-Pass `--plan` with your task description to start a session directly in plan mode:
+The agent enters plan mode when it determines a task has genuine ambiguity. It calls the `enter_plan_mode` tool, which requires your approval before plan mode activates. If you decline, the agent stays in normal mode.
 
-```bash
-grok --plan "refactor the auth module"
-```
+### User-Initiated Entry
 
-### During a Session
+You can enter plan mode yourself in two ways:
 
-Run the `/plan` slash command to enter plan mode from the current session. Plan mode activates on your next prompt. You can also combine the command and description in one step:
+- **`/plan`** — Enter plan mode. Plan mode activates when you send your next prompt. Run `/plan <description>` to enter plan mode and start a turn with that description in one step.
+- **Shift+Tab** — Cycle the session mode: Normal → Plan → Always-approve → Normal. A single press from Normal lands on Plan mode.
 
-```bash
-/plan redesign the data pipeline
-```
-
-### Via Shift+Tab
-
-Press **Shift+Tab** to cycle the session mode: **Normal → Plan → Always-approve → Normal**. A single press from Normal lands on Plan mode. You'll see the `plan` status flag in the UI while plan mode is active.
-
-### Via Agent Definition
-
-To require plan mode for a specific agent type, set `permissionMode: plan` in the agent's frontmatter:
-
-```yaml
-permissionMode: plan
-```
+You'll see the `plan` status flag in the UI while plan mode is active.
 
 ## The Plan File
 
 The agent writes the plan to `plan.md` inside the session directory:
 
-```
+```text
 ~/.grok/sessions/<encoded-cwd>/<session-id>/plan.md
 ```
 
@@ -112,7 +97,7 @@ Plan mode has four states:
 
 State transitions:
 
-```
+```text
 Inactive    --> Active       (enter_plan_mode tool called and approved — skips Pending)
 Inactive    --> Pending      (you toggle plan mode on with /plan or Shift+Tab)
 Pending     --> Active       (your first prompt activates plan mode)

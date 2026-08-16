@@ -1,7 +1,7 @@
 ---
-title: "Subagents: Parallel Task Delegation in Grok Build"
+title: "Subagents: Parallel Task Delegation for Grok Build"
 sidebarTitle: "Subagents"
-description: "Spawn isolated child sessions with spawn_subagent to run tasks in parallel. Configure built-in agent types, personas, capability modes, and MCP inheritance."
+description: "Spawn parallel child sessions with spawn_subagent. Covers agent types, definition frontmatter, personas, capability modes, and MCP server inheritance."
 ---
 
 Subagents are independent child sessions that handle tasks in parallel. Each subagent has its own context window, completely isolated from the parent, so the main agent can delegate work — research, implementation, testing, and code review — without consuming its own context. A subagent reports a summary back to the parent when it finishes. Subagents are enabled by default.
@@ -20,7 +20,7 @@ Agents and personas both customize behavior, but they operate at different level
 | --- | --- | --- |
 | **What they configure** | The whole session: model, tools, prompt mode, system prompt | A behavioral overlay added to a subagent's prompt |
 | **Scope** | Primary session or subagent | Subagents only |
-| **How to set** | At startup, or with agent definition `.md` files in `.grok/agents/` or `~/.grok/agents/` | In `[subagents.personas]` config or `.toml` files under `.grok/personas/`; applied during subagent resolution |
+| **How you set them** | At startup, or with agent definitions (`.md` files in `.grok/agents/` or `~/.grok/agents/`) | In `config.toml` (`[subagents.personas]`) or `.toml` files under `.grok/personas/`; applied during subagent resolution |
 | **What they control** | Model, tool availability, prompt body, skills | Tone, output format, task focus, input/output contracts |
 | **Who edits them** | You — create, delete, or toggle in the agents modal or by editing files | You — define custom personas in config or files; bundled personas are read-only |
 | **Examples** | `grok-build`, `explore`, `plan` | `researcher`, `concise` |
@@ -31,13 +31,20 @@ An agent defines the session itself. A persona shapes how a subagent behaves wit
 
 ## Built-in Agent Types
 
+Two agents are compiled in and always available:
+
+| Name | Description |
+| --- | --- |
+| `grok-build` | Default agent for software engineering tasks (prompt mode: `extend`) |
+| `browser-use` | Web browsing and interaction agent (prompt mode: `full`) |
+
+The `spawn_subagent` tool also accepts the following `subagent_type` values, which map to specific tool configurations:
+
 | Type | Description |
 | --- | --- |
-| `grok-build` | Default software engineering agent for general coding tasks |
-| `explore` | Read-only research agent. Searches, reads, greps, and runs shell commands, but does not edit files. Use for codebase investigation. |
+| `general-purpose` | Default type. Full-capability agent for any task. |
+| `explore` | Research agent. Searches, reads, greps, and runs shell commands, but does not edit files. Use it for codebase investigation. |
 | `plan` | Planning agent. Explores the codebase and produces a structured implementation plan; does not edit files. |
-| `general-purpose` | Full-capability agent with no built-in tool restrictions. |
-| `browser-use` | Web browsing and interaction agent. |
 
 Project- or user-defined agents can add new types or shadow these built-ins by name.
 
@@ -65,11 +72,15 @@ All frontmatter keys use **camelCase**:
 | `promptMode` | `string` | `"extend"` | `"extend"` (append to base template) or `"full"` (replace entirely) |
 | `tools` | `string[]` | inherit all | Tool allowlist — omit for all tools, `[]` for none |
 | `disallowedTools` | `string[]` | `[]` | Denylist (takes priority over `tools`) |
-| `permissionMode` | `string` | `"default"` | `"default"`, `"acceptEdits"`, `"dontAsk"`, `"plan"`, or `"bypassPermissions"` |
+| `permissionMode` | `string` | `"default"` | `"default"`, `"acceptEdits"`, `"dontAsk"`, or `"plan"` |
 | `skills` | `string[]` | `[]` | Skill names to pre-load |
 | `agentsMd` | `bool` | `true` | Discover and inject AGENTS.md files |
 | `outputFormat` | `string` | `"default"` | `"default"` or `"concise"` |
 | `completionRequirement` | `object` | `null` | Tool that must be called before the turn ends |
+| `toolConfig` | `map` | `{}` | Per-tool execution config (e.g. retry policy) |
+| `bash` | `object` | defaults | Bash tool config overrides (`timeoutSecs`, `outputByteLimit`, `cmdPrefix`) |
+| `toolNameOverrides` | `map` | `{}` | Canonical → model-facing tool name map |
+| `paramNameOverrides` | `map` | `{}` | Per-tool parameter name map |
 | `mcpInheritance` | `object` | inherit all | Controls which parent MCP servers are inherited |
 
 ### Minimal agent definition
@@ -237,7 +248,7 @@ Press `Ctrl+G` to toggle the tasks pane. It lists active and completed subagents
 
 When a subagent is spawned, a compact lifecycle block appears in the parent's scrollback:
 
-```
+```text
 Subagent running: "do the thing" (Implementer · grok-3) — Thinking
 ```
 
