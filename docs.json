@@ -1,72 +1,80 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "Grok Build",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
-  },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "primary": "#7C3AED",
+    "light": "#EDE9FE",
+    "dark": "#1C0A3A"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/xai-org/grok-build"
     }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/xai-org/grok-build"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "User Guide",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Using Grok",
+            "pages": [
+              "keyboard-shortcuts",
+              "slash-commands",
+              "configuration",
+              "theming"
+            ]
+          },
+          {
+            "group": "Extending Grok",
+            "pages": [
+              "mcp-servers",
+              "skills",
+              "plugins",
+              "hooks",
+              "custom-models",
+              "project-rules",
+              "memory"
+            ]
+          },
+          {
+            "group": "Advanced Usage",
+            "pages": [
+              "headless-mode",
+              "agent-mode",
+              "subagents",
+              "sessions",
+              "plan-mode",
+              "sandbox",
+              "permissions-and-safety"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "background-tasks",
+              "dashboard",
+              "monitoring-usage",
+              "terminal-support"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

@@ -1,0 +1,310 @@
+---
+title: "Configure Grok Build: config.toml and Environment Variables"
+sidebarTitle: "Configuration"
+description: "Configure Grok Build with config.toml and pager.toml, override settings with environment variables, and manage project-scoped configuration in .grok/ directories."
+---
+
+Grok Build is configured through files in `~/.grok/` and can be overridden at runtime with environment variables and CLI flags. The main configuration file is `~/.grok/config.toml` for agent and session settings, and `~/.grok/pager.toml` for TUI appearance. You only need to set the values you want to change — if a file is missing, Grok falls back to its built-in defaults.
+
+---
+
+## Configuration Precedence
+
+When the same setting is defined in multiple places, the highest-priority source wins. From highest to lowest:
+
+1. **CLI flags** — e.g., `--yolo`, `--model`, `--sandbox`
+2. **Environment variables** — e.g., `XAI_API_KEY`, `GROK_MEMORY`
+3. **`requirements.toml` / MDM** — org-enforced policy; clamps every config layer below, including the overlay
+4. **`GROK_CONFIG` / `GROK_CONFIG_PATH` overlay** — an inline JSON or additional file overlay; sits above `config.toml` but below `requirements.toml`
+5. **`config.toml`** — `~/.grok/config.toml` (your main config)
+6. **`managed_config.toml`** — org-deployed defaults; below `config.toml` so your settings take precedence
+7. **Built-in defaults**
+
+Within the config-file tier, layers merge lowest-to-highest: `managed_config.toml` → `config.toml` → `GROK_CONFIG` overlay → `requirements.toml` / MDM.
+
+<Note>
+**`managed_config.toml`** is intended for enterprise and team deployments. An IT or DevOps team can ship organization-wide defaults (model choices, telemetry settings, approved tool configs) in this file. Because it sits below `config.toml`, individual users can still override managed defaults — unless the setting is also locked via `requirements.toml` or MDM policy, which clamps all lower layers.
+</Note>
+
+---
+
+## config.toml
+
+**Location:** `~/.grok/config.toml`
+
+### `[cli]` — Application-level settings
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `auto_update` | `true` | Check for and install updates on launch |
+| `minimum_version` | — | Soft anti-downgrade floor for the updater |
+| `maximum_version` | — | Soft ceiling for the updater |
+| `required_minimum_version` | — | Hard minimum — CLI refuses to start below this |
+| `required_maximum_version` | — | Hard maximum — CLI refuses to start above this |
+
+### `[models]` — Model defaults
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `default` | `"grok-4.5"` | Model used for new sessions |
+| `web_search` | `"grok-4.5"` | Model used by the `web_search` tool |
+| `temperature` | — | Sampling temperature (0.0–2.0); applied to every model unless overridden per-model |
+| `top_p` | — | Nucleus sampling parameter |
+| `max_completion_tokens` | — | Max tokens per response |
+| `max_retries` | `8` | Inference retry limit |
+| `inference_idle_timeout_secs` | `600` | Seconds before an idle inference stream times out |
+| `stream_tool_calls` | `true` | Stream tool calls as they arrive |
+
+### `[ui]` — Interface behavior
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `simple_mode` | `true` | `true` = readline-style prompt editing; `false` = experimental Vim modal editing |
+| `vim_mode` | `false` | Vim-style scrollback navigation keys (`j`/`k`, `h`/`l`, etc.) |
+| `theme` | `"groknight"` | Active color theme (see [Theming](/theming)) |
+| `compact_mode` | `false` | Tighter padding and spacing |
+| `screen_mode` | `"fullscreen"` | Default render mode: `"fullscreen"` or `"minimal"` |
+| `follow_up_behavior` | `"queue"` | Mid-turn follow-ups: `"queue"` (wait for turn end) or `"steer"` (inject at next safe gap) |
+| `page_flip_on_send` | `true` | Snap a just-sent prompt to the top of the viewport |
+| `show_thinking_blocks` | `true` | Show agent thinking/reasoning blocks in the TUI |
+| `group_tool_verbs` | `true` | Fold runs of similar tool calls and subagent rows into one row |
+| `collapsed_edit_blocks` | `false` | Show file edits as one-line `+N/-M` diffstat summaries |
+| `default_selected_permission` | `"always_allow_all_sessions"` | Which row is pre-selected on the first approval prompt |
+| `remember_tool_approvals` | `false` | Show per-command "Always allow" options on permission prompts |
+
+### `[features]` — Feature flags
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `telemetry` | `false` | Anonymous usage telemetry |
+| `feedback` | `true` | In-app feedback system |
+| `lsp_tools` | `false` | Expose the `lsp` tool to the agent |
+| `codebase_indexing` | `true` | Code-graph indexing for the codebase tool |
+| `two_pass_compaction` | `false` | Pre-fire two-pass compaction (opt-in) |
+| `remote_fetch` | `true` | Allow optional online model-catalog fetches; set `false` for air-gapped deployments |
+
+### `[session]` — Session lifecycle
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `auto_compact_threshold_percent` | `85` | Auto-compact when the context window reaches this percentage |
+| `load_envrc` | `true` | Load `.envrc` environment variables into the session |
+
+### `[toolset.bash]` — Shell tool
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `timeout_secs` | `120.0` | Foreground command timeout in seconds |
+| `output_byte_limit` | `20000` | Maximum captured output in bytes |
+
+### `[permission]` — Permission rules
+
+Define allow/deny/ask rules for tool actions. Rules apply with `deny` > `ask` > `allow` priority and merge across all config files.
+
+```toml
+[[permission.rules]]
+action = "allow"
+tool = "Bash"
+pattern = "git *"
+
+[[permission.rules]]
+action = "deny"
+tool = "Bash"
+pattern = "rm -rf *"
+
+[[permission.rules]]
+action = "ask"
+tool = "Edit"
+```
+
+Supported `tool` values: `Bash`, `Read`, `Edit`, `Grep`, `MCP`, `WebFetch`.
+
+---
+
+### Minimal Example `config.toml`
+
+```toml
+[models]
+default = "grok-build"
+
+[ui]
+vim_mode = true
+theme = "tokyonight"
+compact_mode = false
+follow_up_behavior = "queue"
+
+[features]
+telemetry = false
+
+[session]
+auto_compact_threshold_percent = 85
+
+[toolset.bash]
+timeout_secs = 120.0
+
+[[permission.rules]]
+action = "allow"
+tool = "Bash"
+pattern = "git *"
+```
+
+---
+
+## pager.toml
+
+**Location:** `~/.grok/pager.toml`
+
+Controls terminal behavior, animations, prompt style, scrollback layout, and block styling. Changes apply on restart. Specify only the values you want to override — all settings have defaults.
+
+### `[terminal]` — Alternate screen
+
+```toml
+[terminal]
+alt_screen = "auto"   # "auto" | "always" | "never"
+```
+
+- `auto` (default): use the alternate screen when the terminal supports it.
+- `always`: always use the alternate screen.
+- `never`: run inline in the terminal's main scrollback buffer.
+
+### `[prompt]` — Input widget
+
+```toml
+[prompt]
+collapse_unfocused = true   # Collapse prompt when scrollback is focused
+mouse_hover = true          # Show hover highlight on mouse over
+show_prefix = true          # Show the prompt prefix character
+```
+
+### `[animation]` — Frame rate
+
+```toml
+[animation]
+fps = 30        # Animation frame rate (1–60 ticks per second)
+wave_rows = 32  # Rows per wave cycle for accent animation
+```
+
+### `[scrollback.layout]` — Viewport padding
+
+```toml
+[scrollback.layout]
+outer_vpad = 1          # Vertical padding
+outer_hpad_left = 2     # Left horizontal margin
+outer_hpad_right = 2    # Right horizontal margin
+block_pad_left = 2      # Padding inside block, left of content
+block_pad_right = 2     # Padding inside block, right of content
+```
+
+### `[scrollback.scrollbar]` — Scrollbar
+
+```toml
+[scrollback.scrollbar]
+enabled = true   # Show/hide the scrollbar
+gap_left = 0     # Gap between content and scrollbar
+gap_right = 0    # Gap between scrollbar and screen edge
+```
+
+### `[scrollback.scroll]` — Scroll behavior
+
+```toml
+[scrollback.scroll]
+margin = 0                    # Context lines above/below selection
+follow_indicator = "center"   # "center" = show ▼/▲ scroll arrows, "none" = hidden
+follow_auto_select = true     # Auto-select latest entry in follow mode
+follow_by_overscroll = true   # Scrolling past bottom engages follow mode
+anchor_on_fold = true         # Keep block position when folding
+respect_manual_folds = false  # Keep manually folded blocks pinned during streaming
+```
+
+### `[scrollback.blocks.edit]` — Edit diff blocks
+
+```toml
+[scrollback.blocks.edit]
+indent = true           # Indent diff content
+vpad = false            # Vertical padding around diffs
+dual_line_numbers = false  # Two-column line numbers (old + new)
+hunk_separator = "…"    # Separator between diff hunks
+```
+
+### `[scrollback.blocks.thinking]` — Reasoning blocks
+
+```toml
+[scrollback.blocks.thinking]
+animate = true          # Animate accent line while thinking
+truncated_lines = 3     # Lines shown in truncated mode
+```
+
+---
+
+## Environment Variables
+
+The most important environment variables. See the Grok README for the complete list.
+
+| Variable | Description |
+|----------|-------------|
+| `XAI_API_KEY` | API key from [console.x.ai](https://console.x.ai) |
+| `GROK_HOME` | Override config directory (default: `~/.grok`) |
+| `GROK_LOG_FILE` | Write logs to this file path |
+| `RUST_LOG` | Log level filter (e.g., `debug`); controls the `GROK_LOG_FILE` log and headless stderr output |
+| `GROK_OIDC_ISSUER` | OIDC issuer URL for enterprise SSO |
+| `GROK_OIDC_CLIENT_ID` | OIDC client ID |
+| `GROK_AUTH_PROVIDER_COMMAND` | Path to an external auth binary |
+| `GROK_AUTH_PROVIDER_LABEL` | Display name shown on the TUI login screen |
+| `GROK_AUTH_TOKEN_TTL` | Token lifetime in seconds |
+| `GROK_CLI_CHAT_PROXY_BASE_URL` | Override the API proxy base URL |
+| `GROK_TELEMETRY_ENABLED` | Enable (`1`) or disable (`0`) usage telemetry |
+| `GROK_EXTERNAL_OTEL` | External OpenTelemetry to your own collector |
+| `GROK_MEMORY` | Enable (`1`) or disable (`0`) cross-session memory |
+| `GROK_WORKFLOWS` | Enable (`1`) or disable (`0`) background workflows |
+| `GROK_SANDBOX` | Sandbox profile: `off`, `workspace`, `devbox`, `read-only`, `strict`, or a custom profile name |
+| `GROK_CONFIG` | Inline JSON config overlay (merged above `config.toml`, below `requirements.toml`) |
+| `GROK_CONFIG_PATH` | Path to an additional TOML or JSON config overlay file |
+
+---
+
+## File Locations
+
+| Path | Description |
+|------|-------------|
+| `~/.grok/config.toml` | Main configuration file |
+| `~/.grok/pager.toml` | TUI appearance configuration |
+| `~/.grok/auth.json` | Authentication credentials (auto-managed) |
+| `~/.grok/sessions/` | Persisted sessions (organized by working directory) |
+| `~/.grok/memory/` | Cross-session memory files and index |
+| `~/.grok/skills/` | User-scoped skill definitions |
+| `~/.grok/plugins/` | User-scoped plugins |
+| `~/.grok/agents/` | User-scoped agent definitions |
+| `~/.grok/logs/` | Internal log files (e.g., `unified.jsonl`, MCP server logs) |
+| `~/.grok/lsp.json` | LSP server configuration (user-scoped) |
+| `.grok/config.toml` | Project-scoped MCP servers, plugins, and permission rules |
+| `.grok/skills/` | Project-scoped skill definitions |
+| `.grok/plugins/` | Project-scoped plugins |
+| `.grok/agents/` | Project-scoped agent definitions |
+| `.grok/hooks/` | Project-scoped lifecycle hooks |
+| `.grok/lsp.json` | LSP server configuration (project-scoped) |
+| `AGENTS.md` | Project instructions injected as a system prompt |
+
+---
+
+## Project-Scoped Configuration
+
+Place a `.grok/` directory inside your repository to apply settings for that project only.
+
+| File / Directory | What it configures |
+|------------------|--------------------|
+| `.grok/config.toml` | MCP servers, plugins, and permission rules (other sections are ignored — load from `~/.grok/config.toml`) |
+| `.grok/skills/` | Project-specific skills visible only in this repo |
+| `.grok/hooks/` | Project-specific lifecycle hooks |
+| `.grok/agents/` | Project-specific agent definitions |
+| `.grok/lsp.json` | LSP server configuration for this project |
+| `AGENTS.md` | Project instructions (injected as a system prompt) |
+
+**Priority for `[mcp_servers]` and `[plugins]`:**
+
+1. `<cwd>/.grok/config.toml` (current working directory)
+2. `<repo-root>/.grok/config.toml` (repository root)
+3. `~/.grok/config.toml` (user home)
+
+**`[permission]` rules** do not follow priority override — they **merge** across all files, with `deny` > `ask` > `allow`.
+
+Project-scoped MCP servers with the same name as a global server replace the global one entirely (not a merge).

@@ -1,0 +1,156 @@
+---
+title: "Install Grok Build on macOS, Linux, and Windows"
+sidebarTitle: "Installation"
+description: "Install the grok CLI on macOS, Linux, or Windows using the one-line installer, PowerShell, or build from source with Rust and Cargo."
+---
+
+The `grok` binary is the single executable for Grok Build — SpaceXAI's terminal AI coding agent. Prebuilt binaries are available for macOS, Linux, and Windows. You can install the latest release with a one-line command, pin a specific version for reproducible environments, or build directly from the Rust source.
+
+## Install the Binary
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    Install the latest release using the shell installer:
+
+    ```bash
+    curl -fsSL https://x.ai/cli/install.sh | bash
+    ```
+
+    To install a specific version, pass the version number as an argument:
+
+    ```bash
+    curl -fsSL https://x.ai/cli/install.sh | bash -s 0.1.42
+    ```
+
+    The installer places the `grok` binary in `~/.grok/bin` and adds it to your shell's `PATH` automatically.
+  </Tab>
+  <Tab title="Windows (PowerShell)">
+    Install the latest release using the PowerShell installer:
+
+    ```powershell
+    irm https://x.ai/cli/install.ps1 | iex
+    ```
+
+    To install a specific version, set the `GROK_VERSION` environment variable before running the installer:
+
+    ```powershell
+    $env:GROK_VERSION="0.1.42"; irm https://x.ai/cli/install.ps1 | iex
+    ```
+
+    <Note>
+      The PowerShell installer automatically adds `%USERPROFILE%\.grok\bin` to
+      your User PATH. No manual PATH configuration is required. Open a new
+      terminal window after installation for the change to take effect.
+    </Note>
+  </Tab>
+  <Tab title="Windows (Git Bash)">
+    If you have [Git for Windows](https://gitforwindows.org/) or MSYS2 installed, you can use the same shell installer as macOS and Linux:
+
+    ```bash
+    curl -fsSL https://x.ai/cli/install.sh | bash
+    ```
+
+    To install a specific version:
+
+    ```bash
+    curl -fsSL https://x.ai/cli/install.sh | bash -s 0.1.42
+    ```
+
+    WSL (Windows Subsystem for Linux) users receive the Linux binary automatically.
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+After installation, confirm `grok` is on your `PATH` by checking the version:
+
+```bash
+grok --version
+```
+
+## Update
+
+To update `grok` to the latest available release at any time, run:
+
+```bash
+grok update
+```
+
+See the [changelog](https://x.ai/build/changelog) for the latest fixes, features, and improvements in each release.
+
+## Build from Source
+
+Building from source requires a few dependencies and is supported on macOS and Linux. Windows builds are best-effort and are not currently tested from the open-source tree.
+
+<Steps>
+  <Step title="Install the requirements">
+    **Rust** — The toolchain version is pinned by `rust-toolchain.toml` in the repository root. `rustup` reads this file and installs the correct toolchain automatically on first build. If you don't have `rustup`, install it from [rustup.rs](https://rustup.rs).
+
+    **DotSlash** — Required so hermetic tools under `bin/` (notably `bin/protoc`) can download and run. Install it and ensure `dotslash` is on your `PATH` before building:
+
+    ```bash
+    cargo install dotslash
+    # or: install a prebuilt package — https://dotslash-cli.com/docs/installation/
+    dotslash --help   # sanity check
+    ```
+
+    **protoc** — Protocol Buffers codegen is resolved via DotSlash from `bin/protoc`. If DotSlash is on your `PATH`, no separate installation is needed. Alternatively, a `protoc` binary on your `PATH` or at `$PROTOC` will be used as a fallback.
+  </Step>
+  <Step title="Clone the repository and build">
+    ```bash
+    # Build and immediately launch the TUI
+    cargo run -p xai-grok-pager-bin
+
+    # Build a release binary (output: target/release/xai-grok-pager)
+    cargo build -p xai-grok-pager-bin --release
+
+    # Fast type-check without producing a binary
+    cargo check -p xai-grok-pager-bin
+    ```
+
+    <Note>
+      The binary artifact produced by Cargo is named `xai-grok-pager`. Official
+      installs ship this binary under the name `grok`. If you build from source,
+      you can symlink or copy it:
+
+      ```bash
+      ln -s "$(pwd)/target/release/xai-grok-pager" ~/.local/bin/grok
+      ```
+    </Note>
+  </Step>
+  <Step title="Confirm the build">
+    ```bash
+    ./target/release/xai-grok-pager --version
+    ```
+
+    If you added the symlink or copied the binary to a directory on your `PATH`, verify with:
+
+    ```bash
+    grok --version
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  macOS and Linux are the supported build hosts. Windows builds from source are
+  best-effort and not currently tested from the open-source repository.
+</Warning>
+
+## First Launch
+
+Run `grok` to start the agent:
+
+```bash
+grok
+```
+
+On first launch, Grok opens your browser to authenticate with grok.com. After you sign in, credentials are stored in `~/.grok/auth.json` with owner-only (`0600`) permissions and reused across future sessions. Grok refreshes tokens automatically in the background.
+
+If you are working in an environment without a browser (such as a remote server or CI runner), you can authenticate with an API key instead:
+
+```bash
+export XAI_API_KEY="xai-..."
+grok
+```
+
+See the [Authentication guide](/authentication) for the full set of auth options, including OIDC/SSO, external auth providers, and device-code flow for headless environments.

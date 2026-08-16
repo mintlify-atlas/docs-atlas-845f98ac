@@ -1,0 +1,166 @@
+---
+title: "Grok Build Agent Dashboard: Manage Multiple Sessions"
+sidebarTitle: "Dashboard"
+description: "The Agent Dashboard shows all running Grok sessions in one view. Peek at output, send replies, attach to a session, pin, rename, stop, or dispatch new agents."
+---
+
+The Agent Dashboard is a single screen listing every top-level session in the current pager process — local sessions and forks — grouped by state. From one view you can peek at output, send replies without attaching, attach to a session, pin, rename, stop, or dispatch a brand-new agent. Subagents are not listed directly; they run under their parent session, which shows activity when work is in flight.
+
+---
+
+## Opening the Dashboard
+
+```bash
+# Launch the TUI directly into the dashboard
+grok dashboard
+```
+
+From inside any session:
+
+- **`/dashboard`** (aliases: `/agents-dashboard`, `/sessions`) — open the dashboard.
+- **`Ctrl+\`** — same as the slash command.
+
+The dashboard is hidden in minimal mode. Set `GROK_AGENT_DASHBOARD=0` or `[dashboard].enabled = false` in your config to disable it entirely.
+
+<Tip>
+  Use the dashboard to manage parallel subagent sessions when working on large
+  tasks — you can dispatch new agents, reply to waiting ones, and monitor
+  progress all without leaving a single screen.
+</Tip>
+
+---
+
+## Dashboard Layout
+
+```
+ Grok Build · Dashboard — 4 agents · 2 awaiting
+▌● reviewer · audit token flow    Awaiting your input            2m
+ ● implementer · fix login bug    Running: cargo test           12m
+ ⋅ refactor · feat/login          Responding…                   24m
+ ○ housekeeping                   idle                           1h
+ ● implementer · add login tests  8 tools · 1.2k tok            14m
+╭─────────────────────────────────────────────────────────────────╮
+│ ❯ Dispatch a new agent                                          │
+╰─ dispatch ──────────────────────────────────────────────────────╯
+ ↑/↓ select (peek) · Enter open · Ctrl+R rename · Ctrl+T pin · Ctrl+X stop · ? help · Esc new
+```
+
+Each row is a top-level agent. Sessions are sorted by state — **Needs input → Working → Idle → Inactive → Completed → Failed** — so same-state rows sit together. Toggle grouping by working directory with `Ctrl+G`.
+
+**Inactive** sessions (roster-only entries owned by other pager processes) start collapsed — expand with `→`. To keep **Idle** scannable, only the 8 freshest idle agents plus any active within the last hour are visible; the rest fold into a **"N more"** row at the bottom of the group.
+
+A row stays **Working** while it has live background work even if its turn has finished — a background task, a `monitor`, or an active scheduled `/loop`.
+
+### Session State Icons
+
+| Icon | State |
+| ---- | ----- |
+| `⋅` / `:` / `⸬` / `⁙` | Animated spinner — **Working** |
+| `●` yellow | **Needs input** (awaiting your reply) |
+| `●` green | **Completed** |
+| `●` red | **Failed** |
+| `●` amber | **Blocked** |
+| `○` | **Idle** or **Inactive** |
+
+---
+
+## Key Actions
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓`, `j` / `k` | Navigate rows and section titles (selecting a row opens peek) |
+| `→` / `←` on a section title | Expand / collapse the section (`l` / `h` in vim mode) |
+| `Enter` on a section title | Toggle the section collapsed / expanded |
+| `Enter` (empty reply) | Open the selected agent full-screen (details view) |
+| `Enter` (typed reply) | Send / queue the reply to the selected agent |
+| `Ctrl+S` | Send the peek reply and open the agent (or dispatch and attach a new session) |
+| `Shift+Enter` / `Alt+Enter` | Insert a newline in the reply / dispatch input |
+| `1`–`9` | Answer a pending permission or question when peek shows options |
+| `/` | Insert a literal `/` into the prompt |
+| `Ctrl+/` | Toggle search mode (live-filter rows) |
+| `Ctrl+R` | Rename selected row |
+| `Ctrl+T` | Pin / unpin |
+| `Ctrl+G` | Toggle grouping (state ↔ directory) |
+| `Ctrl+X` | Cancel a running turn, or press twice within 2s to permanently delete |
+| `Shift+↑` / `Shift+↓` | Reorder pinned rows |
+| `Tab` | Toggle focus between dispatch input and overview list |
+| `Esc` | Step back: cancel search → close peek → clear filter → unfocus dispatch → unselect row → exit |
+| `Ctrl+\` | Return from details view, or exit dashboard |
+| `Ctrl+.` (alt: `?`) | Open keyboard shortcuts cheatsheet |
+
+---
+
+## Peek Panel
+
+Selecting an agent row shows the **peek panel** in place of the dispatch box. The panel shows:
+
+- **Header**: last response type (`Thinking` / `Thought` / `Response` / `Edit` / `Read` / `Bash` / …) and time.
+- **Recent output**: the most recent response, word-wrapped up to ~3 rows (`…` when truncated).
+- **Live `❯ reply` input**: send a reply without fully attaching to the session.
+
+Idle agents start immediately on reply; busy agents queue the message. Use `Ctrl+S` to reply and open the detail view in one step.
+
+For **pending permission or ask-tool questions**, the reply input is replaced by an options list. Use `↑`/`↓` to highlight and `Enter` to answer, or press `1`–`9` to answer directly.
+
+---
+
+## Dispatch Input
+
+The bottom textarea **always spawns a new session**. A selected row is the navigation cursor, not a reply target — use the peek panel to talk to an existing agent; use the dispatch input to start a new one.
+
+- **Free text** → new top-level session seeded with the prompt.
+- **Empty input** → open the selected row, or create a new agent when `[+ New Agent]` is focused.
+- **`Ctrl+S` after typing** → dispatches and attaches to the new session immediately.
+- **Plain `Enter`** → dispatches and stays on the dashboard so you can dispatch several sessions in sequence.
+
+`Tab` toggles focus between the dispatch input and the overview list. On open, focus defaults to the overview list when at least one agent exists.
+
+---
+
+## Search and Filter
+
+Press **`Ctrl+/`** to toggle search mode. The `❯` prefix becomes a yellow `Search:` and every keystroke live-filters the list.
+
+| Action | Key |
+| --- | --- |
+| Confirm filter and return to dispatch | `Enter` |
+| Cancel and clear filter | `Esc` or `Ctrl+/` |
+| Navigate filtered rows | `↑` / `↓` |
+
+**Search prefixes** (only active inside search mode):
+
+| Prefix | Description |
+| --- | --- |
+| `a:<name>` | Agent label — case-insensitive substring (persona / role) |
+| `s:<state>` | Row state: `working`, `idle`, `completed`, `failed`, `needs-input`, `blocked` and synonyms |
+| `#<text>` | Substring match on `#<text>` (literal `#` in labels) |
+| anything else | Substring over label + working directory |
+
+---
+
+## Attaching to a Session
+
+Press **`Enter`** on a row (with an empty reply input) to open it in the **details view** — a full-width conversation view with no bordered modal. While in the details view:
+
+- All keyboard input goes to the attached agent.
+- `Esc` or `Ctrl+\` returns you to the dashboard.
+- `[‹]` / `[›]` cycle between agents.
+- `Ctrl+X` while a turn is running cancels the turn; `Ctrl+X` twice within 2s permanently closes the session.
+
+Use `/exit` inside an attached agent to close the session and return to the dashboard. `/delete` wipes the session entirely.
+
+---
+
+## Persistence Configuration
+
+Per-user dashboard preferences live under `[dashboard]` in `~/.grok/config.toml`:
+
+```toml
+[dashboard]
+enabled  = true
+grouping = "state"   # or "directory"
+pinned   = ["top:<session_id>"]
+reorder  = ["top:<session_id>"]
+```
+
+Pinned and reorder entries use the session ID (not a per-process agent slot), so they survive restarts.

@@ -1,0 +1,194 @@
+---
+title: "Grok Build Skills: Reusable Prompt Packages"
+sidebarTitle: "Skills"
+description: "Create and use Skills in Grok Build — SKILL.md files that teach repeatable workflows. Skills auto-invoke based on task context or run as slash commands."
+---
+
+Skills are reusable prompt packages that extend Grok with task-specific instructions. They let you capture a repeatable procedure once — step-by-step instructions, conventions, tool-usage patterns — instead of re-explaining it each session. Grok activates a skill only when it applies to your current task.
+
+## What Is a Skill?
+
+A skill is a directory containing a `SKILL.md` file. The markdown body tells Grok how to handle a specific type of task. Use a skill for a repeatable procedure that's too specific for `AGENTS.md` but too long to retype.
+
+```
+~/.grok/skills/
+  commit/
+    SKILL.md
+  review-pr/
+    SKILL.md
+  deploy/
+    SKILL.md
+```
+
+## Skill Locations
+
+Grok discovers skills from these directories, in priority order:
+
+| Location | Scope | Priority | Notes |
+|----------|-------|----------|-------|
+| `./.grok/skills/`, `./.grok/commands/` | Local (CWD) | Highest | Current directory skills / legacy command markdown |
+| `<repo_root>/.grok/skills/`, `…/commands/` | Repo | Medium | Shared across the repository |
+| `~/.grok/skills/`, `~/.grok/commands/` | User | Lowest | Personal skills for all projects |
+| `~/.claude/skills/`, `~/.claude/commands/` | User | Lowest | Claude Code compatibility (configurable) |
+| `./.claude/skills/`, `./.claude/commands/` | Local / Repo | High | Project Claude skills and legacy custom slash commands |
+| `~/.cursor/skills/` | User | Lowest | Cursor compatibility (configurable) |
+| `./.cursor/skills/` | Local / Repo | High | Project Cursor skills (when cursor compat is enabled) |
+
+Grok deduplicates skills by name — a higher-priority location overrides a lower one. Flat `*.md` files under a `commands/` directory become user-invocable slash commands (filename stem = command name), matching Claude Code's legacy custom-command layout.
+
+## Creating a Skill
+
+<Steps>
+  <Step title="Create the skill directory">
+    Create a named directory under your chosen skill location. Use lowercase letters, digits, and hyphens:
+
+    ```bash
+    mkdir -p ~/.grok/skills/commit
+    ```
+  </Step>
+
+  <Step title="Write SKILL.md with frontmatter">
+    Create a `SKILL.md` file in the directory. A skill file has YAML frontmatter followed by markdown instructions:
+
+    ```markdown
+    ---
+    name: commit
+    description: Create well-formatted git commits following conventional commit standards. Use when the user wants to commit changes or asks for /commit.
+    ---
+
+    # Git Commit Skill
+
+    Review staged changes and create a commit with a clear, conventional message.
+
+    ## Steps
+
+    1. Run `git diff --staged` to see what has changed
+    2. Summarize what changed and why
+    3. Write a commit message following the Conventional Commits format
+    4. Run `git commit -m "..."` with the composed message
+    ```
+  </Step>
+
+  <Step title="Review the complete example">
+    A well-formed skill has a specific `description` that names the trigger phrases, concrete ordered steps, and references to tools by name:
+
+    ```markdown
+    ---
+    name: commit
+    description: Create well-formatted git commits following conventional commit standards. Use when the user wants to commit changes or asks for /commit.
+    when-to-use: "commit changes, save progress, git commit"
+    allowed-tools: run_terminal_command
+    argument-hint: "commit message"
+    ---
+
+    # Git Commit Skill
+
+    Review staged changes and create a commit with a clear, conventional message.
+
+    ## Steps
+
+    1. Run `git diff --staged` to review what is staged
+    2. Identify the type of change: feat, fix, chore, docs, refactor, test, style
+    3. Write a subject line: `<type>(<scope>): <short description>`
+    4. Add a body if the change needs context beyond the subject line
+    5. Run `git commit -m "<message>"` using `run_terminal_command`
+    ```
+  </Step>
+
+  <Step title="Core frontmatter fields">
+    | Field | Description |
+    |-------|-------------|
+    | `name` | Skill identifier. Use lowercase letters, digits, and hyphens (up to 64 characters). If omitted, Grok uses the directory name. |
+    | `description` | What the skill does and when to use it. Grok reads this to decide whether to invoke automatically. If omitted, Grok uses the first paragraph of the body. |
+  </Step>
+
+  <Step title="Optional frontmatter fields">
+    Multi-word keys use kebab-case.
+
+    | Field | Description |
+    |-------|-------------|
+    | `when-to-use` | Trigger phrases for automatic invocation, kept separate from `description`. |
+    | `allowed-tools` | Tools the skill uses, as a YAML list or a comma- or space-separated string. |
+    | `argument-hint` | Hint text shown in slash-command autocomplete (e.g. `commit message`). |
+    | `user-invocable` | Whether the skill appears as a slash command. Defaults to `true`. |
+    | `disable-model-invocation` | When `true`, only an explicit slash command runs the skill — the model cannot invoke it automatically. Defaults to `false`. |
+    | `model` | Model override for running the skill. |
+    | `effort` | Reasoning-effort override. |
+    | `license` | License identifier (e.g. `Apache-2.0`). |
+    | `compatibility` | Environment requirements (e.g. `Requires git, docker, jq`). |
+    | `metadata` | Arbitrary string key-value pairs. Grok promotes `metadata.author` and `metadata.short-description` for display. |
+  </Step>
+</Steps>
+
+## Using /create-skill
+
+The `/create-skill` command walks you through building a new skill interactively. When you run it, Grok:
+
+1. **Gathers requirements** — asks for the skill name, the scope to save it under, and a description of the workflow to capture.
+2. **Drafts the description** — writes a `description` stating what the skill does and the phrases that trigger it. You approve or edit the draft before continuing.
+3. **Creates the skill directory** — creates `<scope>/.grok/skills/<name>/`, plus `scripts/` or `references/` subdirectories when needed.
+4. **Writes SKILL.md** — writes the frontmatter and a markdown body of instructions.
+5. **Verifies and confirms** — reads the file back, confirms it wrote correctly, and tells you how to run the skill.
+
+The new skill appears in the slash menu within seconds, because Grok reloads skills when files change on disk.
+
+## Using Skills
+
+Run a skill by typing its name as a slash command:
+
+```
+/commit              # Runs the "commit" skill
+/review-pr           # Runs the "review-pr" skill
+/commit fix the build  # Pass arguments after the name
+```
+
+When names collide with a built-in command or another skill, Grok keeps both invocable under qualified names prefixed by scope:
+
+```
+/local:commit        # The "commit" skill from ./.grok/skills/
+/user:commit         # The "commit" skill from ~/.grok/skills/
+/acme:login          # A plugin skill named "login" (built-in /login is unchanged)
+```
+
+Type `/` to open the slash-command menu. Grok lists every built-in command and skill and filters as you type.
+
+## Auto-Invocation
+
+Grok can invoke a skill automatically when it recognizes a relevant task. Grok matches your prompt against the skill's `description` and `when-to-use` fields — write both to describe the triggering situation clearly.
+
+For example, if a skill's description says "Use when the user wants to commit changes," then saying "commit my changes" can trigger it automatically. To require an explicit slash command and prevent automatic invocation, set `disable-model-invocation: true` in the frontmatter.
+
+## Viewing Skill Details
+
+Run `grok inspect` to see every skill Grok discovers, along with the rest of your configuration:
+
+```bash
+grok inspect          # Human-readable summary
+grok inspect --json   # Machine-readable report
+```
+
+The Skills section lists each skill's name and its source: `project`, `user`, `bundled`, `config` (a `[skills].paths` entry), `server` (skills synced from the skill store in managed workspaces), or `plugin: <name>`. Skills disabled via `[skills].disabled` or from a disabled vendor surface are tagged `[disabled]`.
+
+The `--json` report includes the full detail for each skill: `name`, `description`, `source` (with path to `SKILL.md`), and `userInvocable` flag. Colliding skills also include `collidesWith` and `invocableAs`.
+
+## Bundled and Plugin Skills
+
+Bundled skills are cached under `~/.grok/bundled/skills/`; Grok never writes them into `~/.grok/skills/`. A same-named local, repo, or user skill overrides the bundled copy.
+
+Skills can also come from plugins. When you install a plugin that includes skills, they appear alongside your user and project skills and are labeled `plugin: <name>` in `grok inspect` output. A plugin skill with the same name as a native skill does not override it — it stays available under its qualified `plugin:name` form.
+
+See the [Plugins guide](/plugins) for more on installing plugins that provide skills.
+
+## Best Practices
+
+1. **Write specific descriptions.** The description drives automatic invocation. "Create git commits" is too vague; "Create well-formatted git commits following conventional commit standards. Use when the user wants to commit changes or asks for /commit." works better.
+
+2. **Include concrete steps.** Skills work best when they give Grok a clear, ordered procedure to follow.
+
+3. **Reference tools by name.** When a skill relies on specific tools (such as `run_terminal_command` or `search_replace`), name them so the model knows what to use.
+
+4. **Keep skills focused.** Write one skill per workflow. A `deploy` skill and a `rollback` skill work better than a single `deploy-and-rollback` skill.
+
+5. **Version-control project skills.** Commit `.grok/skills/` to your repository so the whole team benefits. User skills in `~/.grok/skills/` stay personal and unshared.
+
+6. **Test by running it.** Invoke `/name` and confirm the skill works before you rely on automatic invocation.

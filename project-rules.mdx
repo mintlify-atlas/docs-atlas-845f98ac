@@ -1,0 +1,171 @@
+---
+title: "Project Rules with AGENTS.md: Per-Repo Instructions"
+sidebarTitle: "Project Rules"
+description: "Teach Grok Build your project's conventions by creating AGENTS.md files. Rules are scoped by directory, with deeper files taking priority over parent directories."
+---
+
+`AGENTS.md` files inject per-project instructions into every Grok session for that directory. Place one in your repository root to give Grok permanent context about your codebase's conventions, build process, and architecture — without restating them each session.
+
+## Supported Filenames
+
+Grok checks for these filenames (in order) within each directory and loads every match:
+
+- `AGENTS.md` *(primary)*
+- `Agents.md`
+- `AGENT.md`
+- `CLAUDE.md` — Claude Code compatibility
+- `Claude.md` — Claude Code compatibility
+- `CLAUDE.local.md` — Claude Code compatibility (gitignore for personal overrides)
+
+On case-insensitive filesystems, names that resolve to the same file are deduplicated and counted once. When Claude compatibility is enabled (the default), Grok also scans `~/.claude/` and `.claude/CLAUDE.md` at each directory level. With Cursor compatibility enabled, `~/.cursor/` is scanned the same way.
+
+---
+
+## Discovery and Priority
+
+Grok discovers project rules in this order:
+
+```
+~/.grok/AGENTS.md              (global — applies to all projects)
+<repo-root>/AGENTS.md          (repo root)
+<repo-root>/src/AGENTS.md      (subdirectory)
+<cwd>/AGENTS.md                (current working directory — highest priority)
+```
+
+All matching files are loaded and injected. Files in **deeper directories appear later** in Grok's context and take precedence when instructions conflict. If the repo root says "use styled-components" but `src/components/AGENTS.md` says "use CSS modules", CSS modules wins.
+
+**Auto-loading:** Grok loads all files from the repo root to the current working directory at session start. When Grok later reads or edits files in directories outside that initial set, it detects any instruction files there and reads them when they apply.
+
+If you are not inside a Git repository, Grok loads only the current working directory's files.
+
+---
+
+## Rules Directories
+
+In addition to named files, Grok scans for `*.md` files in rules directories at each level from the repo root to the current working directory:
+
+| Location | Notes |
+|----------|-------|
+| `.grok/rules/` | Always scanned |
+| `.claude/rules/` | Claude compatibility (configurable) |
+| `.cursor/rules/` | Cursor compatibility (configurable) |
+| `~/.grok/rules/` | Global; applies to all projects |
+
+Files within each rules directory are loaded in alphabetical order. Home rules load first, followed by project files from repo root to the current directory.
+
+---
+
+## What to Put in AGENTS.md
+
+The most effective AGENTS.md files are short, specific, and actionable. Here is what works best:
+
+1. **Coding conventions** — language version, style guide, formatter, linter config
+2. **Build and test commands** — exactly how to build, test, and lint the project
+3. **Architecture notes** — where business logic lives, what depends on what, what to avoid
+4. **File structure conventions** — where new files of each type belong
+5. **What NOT to modify** — generated files, vendored code, files owned by another tool
+
+A complete example for a Rust project:
+
+```markdown
+# Project Rules
+
+## Language and Toolchain
+- Rust edition 2021, MSRV 1.80
+- Run `cargo fmt` before every commit
+- Run `cargo clippy -- -D warnings` and fix all warnings
+- Run `cargo test` before opening a PR
+
+## Architecture
+- Business logic goes in `crates/core/`
+- CLI entry points go in `crates/cli/`
+- Do not add dependencies to `crates/core/` without discussion
+- Avoid `unwrap()` in library code; use `?` and proper error types
+
+## File Conventions
+- One public type per file in `src/`
+- Integration tests go in `tests/`, not in `src/`
+- Generated files live in `target/` — never edit them
+
+## Do Not Modify
+- `Cargo.lock` (managed by Cargo)
+- `crates/generated/` (output of the codegen step; run `cargo codegen` to regenerate)
+```
+
+---
+
+## Scoping Rules to Subdirectories
+
+Place an `AGENTS.md` in any subdirectory to scope rules to that part of the codebase. Rules accumulate from the repo root down, so subdirectory files add to (and can override) parent rules:
+
+```
+my-monorepo/
+  AGENTS.md                    # "Use conventional commits. Run `pnpm test` before PRs."
+  packages/
+    frontend/
+      AGENTS.md                # "Use React. Prefer CSS modules. Run `pnpm --filter frontend test`."
+    backend/
+      AGENTS.md                # "Use Express. Follow REST conventions. Run `pnpm --filter backend test`."
+    shared/
+      AGENTS.md                # "No framework-specific code in this package."
+```
+
+When Grok is working in `packages/frontend/`, it sees all three files. The `frontend/AGENTS.md` instruction takes precedence over any conflicting instruction from the root.
+
+---
+
+## The .grok/ Project Directory
+
+Beyond `AGENTS.md` files, the `.grok/` directory in your project root holds additional project-level configuration:
+
+| Path | Purpose |
+|------|---------|
+| `.grok/config.toml` | Project-scoped MCP servers, plugins, and permission rules (settings like appearance load only from `~/.grok/config.toml`) |
+| `.grok/skills/` | Project-scoped skill definitions |
+| `.grok/plugins/` | Project-scoped plugins |
+| `.grok/agents/` | Project-scoped agent definitions |
+| `.grok/hooks/` | Project-scoped lifecycle hooks (requires `/hooks-trust`) |
+| `.grok/lsp.json` | LSP server configuration |
+| `.grok/rules/` | Additional `*.md` rule files, loaded alphabetically |
+
+All of these are optional. See the respective guides for details.
+
+---
+
+## Disabling AGENTS.md Injection
+
+To turn off project rules loading entirely (for example, in a scripted environment where you control the full system prompt):
+
+```toml
+# ~/.grok/config.toml
+[features]
+agents_md = false
+```
+
+You can also replace the system prompt for a single session:
+
+```bash
+grok --system-prompt-override "You are a helpful assistant."
+```
+
+Or append extra rules for a single session without editing any file:
+
+```bash
+grok --rules "Always use TypeScript. Prefer functional components."
+```
+
+---
+
+## Inspecting Loaded Rules
+
+Use `grok inspect` to see all loaded project instruction files, their paths, and their approximate token counts:
+
+```bash
+grok inspect
+```
+
+---
+
+<Tip>
+  Version-control your `AGENTS.md` alongside the codebase so the whole team benefits from shared conventions. For personal overrides that should not be committed, use `CLAUDE.local.md` and add it to `.gitignore`.
+</Tip>

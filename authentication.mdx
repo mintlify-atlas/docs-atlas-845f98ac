@@ -1,0 +1,355 @@
+---
+title: "Authenticate with Grok Build: All Auth Methods"
+sidebarTitle: "Authentication"
+description: "Configure browser login, API keys, OIDC/SSO, external auth providers, and device-code flow for Grok Build. Includes token refresh and credential precedence."
+---
+
+Grok Build supports multiple authentication methods to cover interactive development, enterprise SSO, and fully headless CI/CD environments. You can authenticate through a browser, supply an API key via an environment variable, delegate to your company's Identity Provider via OIDC, plug in a custom auth binary, or use a device-code flow on machines where no browser is available.
+
+## Browser Login (Default)
+
+On first launch, Grok opens your browser to authenticate with grok.com:
+
+```bash
+grok
+```
+
+Credentials are stored in `~/.grok/auth.json` with owner-only permissions (`0600` on Unix) and reused across sessions. Grok refreshes access tokens automatically in the background. When a token can no longer be refreshed, Grok prompts you to sign in again. Credentials without a server-provided expiry fall back to a 30-day lifetime.
+
+### Re-authenticate or Switch Accounts
+
+To start the sign-in flow again — for example, to switch accounts or resolve an auth error — run:
+
+```bash
+grok login
+```
+
+By default, `grok login` signs in through SpaceXAI OAuth at `auth.x.ai`. Pass a flag to select a different flow:
+
+| Flag | Description |
+|------|-------------|
+| `--oauth` | Sign in through SpaceXAI OAuth at `auth.x.ai`. This is the default; the flag is optional. |
+| `--device-auth` (alias `--device-code`) | Sign in with the device-code flow for headless or remote environments. |
+
+To sign out and clear cached credentials, run:
+
+```bash
+grok logout
+```
+
+### Credential Storage Security
+
+<Warning>
+  Anyone with filesystem access to `~/.grok/auth.json` (or
+  `~/.grok/mcp_credentials.json` for MCP OAuth tokens) can use the stored
+  credentials. Follow these practices to keep them safe:
+
+  - Prefer full-disk encryption (FileVault, BitLocker, LUKS, or equivalent).
+  - Do not copy `auth.json` or `mcp_credentials.json` into shared directories,
+    tickets, or chat messages.
+  - On multi-user hosts, keep your `$HOME` (or `$GROK_HOME`) private to your
+    account.
+</Warning>
+
+## API Key
+
+For CI/CD pipelines, automation scripts, or any environment without browser access, use an API key from [console.x.ai](https://console.x.ai):
+
+```bash
+export XAI_API_KEY="xai-..."
+grok
+```
+
+Grok uses the API key as a fallback when no active session token is present. If you have already signed in interactively, the stored session token takes precedence over `XAI_API_KEY`. To force the API key, sign out first:
+
+```bash
+grok logout   # clears ~/.grok/auth.json
+grok          # now falls back to XAI_API_KEY
+```
+
+## OIDC / Enterprise SSO
+
+Authenticate developers through your own Identity Provider (IdP) — such as Okta, Azure AD, or Auth0 — instead of grok.com directly.
+
+### 1. Register a public client in your IdP
+
+- **Grant type:** Authorization Code with PKCE (Proof Key for Code Exchange)
+- **Redirect URI:** `http://127.0.0.1/callback` — a loopback address. Grok binds a random port at sign-in time; most IdPs treat loopback redirects as port-agnostic per [RFC 8252](https://tools.ietf.org/html/rfc8252).
+- **No client secret required.** PKCE replaces it.
+
+### 2. Configure the CLI
+
+Via `~/.grok/config.toml`:
+
+```toml
+[grok_com_config.oidc]
+issuer = "https://acme.okta.com"
+client_id = "0oa1b2c3d4e5f6g7h8i9"
+```
+
+Or via environment variables:
+
+```bash
+export GROK_OIDC_ISSUER="https://acme.okta.com"
+export GROK_OIDC_CLIENT_ID="0oa1b2c3d4e5f6g7h8i9"
+```
+
+You can also route API calls through your own proxy:
+
+```bash
+export GROK_CLI_CHAT_PROXY_BASE_URL="https://grok-proxy.acme.com/v1"
+```
+
+### 3. Run `grok`
+
+The CLI discovers endpoints via `{issuer}/.well-known/openid-configuration`, opens the IdP login page, and stores tokens in `~/.grok/auth.json`. Tokens auto-refresh silently using the stored `refresh_token`.
+
+### Optional fields
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `scopes` | `["openid", "profile", "email", "offline_access", "api:access"]` | Include `offline_access` to enable silent token refresh |
+| `audience` | None | Required by some IdPs (for example, Auth0) |
+
+## External Auth Provider
+
+When browser-based login isn't possible — for example, on sandboxed VMs, CI runners, or air-gapped networks — you can delegate authentication to an external binary or shell script.
+
+### How It Works
+
+Grok runs your command via `sh -c "<command>"`, reads the token from stdout, and surfaces status messages from stderr to the user:
+
+```
++--------------+    sh -c     +------------------------+
+|     Grok     |------------->|  your auth binary      |
+|              |              |                        |
+|  reads       |<-- stdout ---|  prints token          |
+|  auth.json   |              |                        |
+|              |   (stderr)   |  prints status / URLs  |--> surfaced to user
++--------------+              +------------------------+
+```
+
+1. Grok runs your command via `sh -c "<command>"`
+2. Your binary executes whatever auth flow it needs (SSO, device code, certificate exchange, etc.)
+3. **stderr** carries human-readable output such as login URLs and status messages. Grok reads stderr and surfaces it to the user; in the TUI, the first `https://` URL on stderr becomes a clickable sign-in link.
+4. **stdout** is captured by Grok and saved as the access token.
+5. Exit 0 means success; any non-zero exit causes Grok to fall back to interactive login.
+
+### The stdout / stderr Contract
+
+| Stream | What to print | Who sees it |
+|--------|---------------|-------------|
+| **stdout** | The token — nothing else | Grok (parsed and stored in `auth.json`) |
+| **stderr** | Login URLs, status messages, errors | The user (Grok shows the sign-in URL as a clickable link in the TUI) |
+
+<Warning>
+  Do not print anything to stdout except the token. No progress messages, no
+  debug output. Grok reads stdout, trims surrounding whitespace, and parses
+  the result as the credential. Any extra output will corrupt the stored token.
+</Warning>
+
+### Token Formats
+
+**Bare string** — just the raw token:
+
+```
+eyJhbGciOiJSUzI1NiIs...
+```
+
+**JSON** — with optional refresh token, expiry, and issuer. Use this format if your tokens expire and you want Grok to re-run the binary automatically before expiry:
+
+```json
+{
+  "access_token": "eyJhbGciOi...",
+  "refresh_token": "ref-tok",
+  "expires_in": 3600,
+  "issuer": "https://idp.example.com"
+}
+```
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `access_token` | Yes | Bearer token sent to the xAI API |
+| `refresh_token` | No | Stored for reference. Grok refreshes by re-running your binary, not via an OAuth refresh grant |
+| `expires_in` | No | Token lifetime in seconds; enables proactive refresh before expiry |
+| `issuer` | No | Identifies the token's issuer |
+
+### Configuration
+
+Via `~/.grok/config.toml`:
+
+```toml
+[auth]
+auth_provider_command = "/usr/local/bin/my-auth-provider"
+auth_provider_label   = "Acme Corp"   # optional — customizes the TUI login button
+auth_token_ttl        = 3600          # optional — token lifetime in seconds
+```
+
+Or via environment variables:
+
+```bash
+export GROK_AUTH_PROVIDER_COMMAND="/usr/local/bin/my-auth-provider"
+export GROK_AUTH_PROVIDER_LABEL="Acme Corp"
+export GROK_AUTH_TOKEN_TTL=3600
+```
+
+### Token Refresh
+
+Grok invokes your binary on two different contracts, distinguished by the `GROK_AUTH_EXPIRED` environment variable. Each run fully replaces the stored credential, so emit the same JSON fields on every invocation — including refreshes.
+
+- **`GROK_AUTH_EXPIRED=1` — headless refresh.** Grok is re-minting over a credential it already holds (near-expiry rotation or a token rejected by the server). No user is watching. stdin is closed, stderr is swallowed, and the binary is given only a few seconds before it is killed. Mint silently or exit non-zero — never block.
+- **`GROK_AUTH_EXPIRED` unset — sign-in.** Triggered by `grok login`, the sign-in screen, or an escalation when a headless refresh fails. A user is waiting, your stderr reaches them, and you have 300 seconds — enough for a browser round trip or a device-code flow.
+
+```bash
+#!/bin/sh
+if [ "$GROK_AUTH_EXPIRED" = "1" ]; then
+    # Headless: silent refresh only.
+    # Exit non-zero if the SSO session has lapsed — don't block.
+    echo "Refreshing token..." >&2
+    TOKEN=$(my-company-auth --refresh --silent) || exit 1
+else
+    # Interactive sign-in: user is watching, stderr reaches them.
+    echo "Authenticating via Acme Corp SSO..." >&2
+    TOKEN=$(my-company-auth --login --interactive)
+fi
+
+if [ -z "$TOKEN" ]; then
+    echo "Authentication failed" >&2
+    exit 1
+fi
+
+echo "{\"access_token\": \"$TOKEN\", \"expires_in\": 3600}"
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `GROK_AUTH_PROVIDER_COMMAND` | Path to your auth binary |
+| `GROK_AUTH_PROVIDER_LABEL` | Display name on the TUI login screen (for example, `"Acme Corp"`) |
+| `GROK_AUTH_TOKEN_TTL` | Token lifetime in seconds (for bare-string tokens without `expires_in`) |
+| `GROK_AUTH_EXPIRED` | Set to `1` on a headless refresh — don't prompt and don't return a cached token. Unset during an interactive sign-in |
+| `GROK_AUTH_EARLY_INVALIDATION_SECS` | Seconds before expiry to proactively refresh (default: `300`) |
+
+## Device Code Flow
+
+For SSH sessions, Docker containers, remote VMs, or any headless environment where no browser is available locally:
+
+```bash
+grok login --device-auth    # alias: grok login --device-code
+```
+
+Grok prints a URL and a short code to the terminal. Open the URL on any device, enter the code, and complete authentication. Grok polls until the login is confirmed, then stores the credentials and continues.
+
+<Tip>
+  You can also implement the device-code flow through an
+  [External Auth Provider](#external-auth-provider) if you need full control
+  over the auth UX or need to integrate with a non-standard IdP.
+</Tip>
+
+## Auth Precedence
+
+Grok resolves credentials for each request in the following order, highest to lowest:
+
+1. **Per-model `api_key` or `env_key`** — set under `[model.<name>]` in `config.toml`. Wins whenever present.
+2. **Active session token** — obtained via browser login, OIDC/OAuth2, or an external auth provider and stored in `~/.grok/auth.json`.
+3. **`XAI_API_KEY`** — environment-variable fallback when no session token is active.
+
+When more than one login flow is configured, Grok populates the session token from the first available source, highest to lowest: external auth provider → enterprise OIDC → SpaceXAI OAuth2 browser login.
+
+## Automatic Credential Refresh
+
+Grok handles token renewal automatically so you are rarely interrupted mid-session:
+
+- **Before expiry:** If your auth provider returned `expires_in` (JSON output) or you set `auth_token_ttl`, Grok re-runs the auth binary approximately 5 minutes before expiry (configurable via `GROK_AUTH_EARLY_INVALIDATION_SECS`).
+- **On auth error:** If the xAI API returns `401 Unauthorized`, Grok refreshes the credential and retries the request.
+- **OIDC:** When a `refresh_token` is available, Grok silently refreshes via your IdP without re-opening the browser.
+- **Hot reload:** Grok watches `~/.grok/auth.json` for changes. If an external script writes new tokens, Grok picks them up on the next API call without a restart.
+
+Tune the proactive refresh buffer:
+
+```bash
+# Refresh 5 minutes before expiry (default)
+export GROK_AUTH_EARLY_INVALIDATION_SECS=300
+
+# Disable proactive refresh — only refresh at expiry or on a 401
+export GROK_AUTH_EARLY_INVALIDATION_SECS=0
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Enable debug logging">
+    Set `GROK_LOG_FILE` and `RUST_LOG` to capture verbose logs from the TUI:
+
+    ```bash
+    GROK_LOG_FILE=/tmp/grok.log RUST_LOG=debug grok
+    tail -f /tmp/grok.log
+    ```
+
+    In headless mode, logs go to stderr. Redirect them to a file:
+
+    ```bash
+    RUST_LOG=debug grok -p "hello" 2>/tmp/grok.log
+    ```
+
+    `GROK_LOG_FILE` is treated as a literal path. A relative value such as `1` writes a file named `1` in the current directory. Note: the TUI's on-screen tracing pane uses a fixed filter and ignores `RUST_LOG`.
+
+    Common log messages from the external auth provider:
+
+    | Log message | Meaning |
+    |-------------|---------|
+    | `auth: running external auth provider (headless refresh)` / `(interactive login)` | Grok is running your binary and on which contract |
+    | `auth: external auth provider returned fresh token` | Grok parsed and stored the token successfully |
+    | `auth: external auth provider failed` | Binary exited non-zero or stdout was empty |
+    | `auth: external auth provider timed out (likely needs interactive auth), killing` | Binary did not exit before the timeout and was killed |
+    | `auth: failed to start external auth provider` | Command could not be spawned (binary not found) |
+  </Accordion>
+  <Accordion title="Authentication failed">
+    Clear cached credentials and sign in again:
+
+    ```bash
+    grok logout
+    grok login
+    ```
+
+    If you are using an external auth provider, check that the binary exits with code 0 and that stdout contains only the token with no extra output.
+  </Accordion>
+  <Accordion title="Token expires too quickly">
+    Configure the token lifetime so Grok knows when to refresh:
+
+    - For external auth providers using a bare-string token, set `auth_token_ttl` in `config.toml` or via `GROK_AUTH_TOKEN_TTL`.
+    - For providers that emit JSON, include `"expires_in": <seconds>` in the stdout payload.
+
+    To adjust how far in advance Grok refreshes:
+
+    ```bash
+    export GROK_AUTH_EARLY_INVALIDATION_SECS=300   # default: 5 minutes
+    ```
+  </Accordion>
+  <Accordion title="OIDC redirect fails">
+    Ensure your IdP is configured to allow loopback redirect URIs. Per [RFC 8252](https://tools.ietf.org/html/rfc8252), the correct redirect URI to register is:
+
+    ```
+    http://127.0.0.1/callback
+    ```
+
+    Most IdPs treat loopback addresses as port-agnostic, meaning `http://127.0.0.1:<random-port>/callback` will match. If your IdP requires an exact port, consult its documentation for how to enable port-agnostic loopback redirects.
+  </Accordion>
+  <Accordion title="External auth provider not found">
+    Check that:
+
+    1. The path in `auth_provider_command` (or `GROK_AUTH_PROVIDER_COMMAND`) is an absolute path to the binary.
+    2. The file exists and is executable (`chmod +x /path/to/my-auth-provider`).
+    3. If the command is a shell script, confirm the shebang line is correct and `sh` can execute it.
+
+    You can test the binary directly before configuring Grok:
+
+    ```bash
+    /usr/local/bin/my-auth-provider
+    echo "Exit code: $?"
+    ```
+
+    The binary should print a token to stdout and exit 0.
+  </Accordion>
+</AccordionGroup>

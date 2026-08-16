@@ -1,0 +1,257 @@
+---
+title: "Grok Build Keyboard Shortcuts and Key Bindings"
+sidebarTitle: "Keyboard Shortcuts"
+description: "Complete reference for all keyboard shortcuts in the Grok Build TUI — navigation, focus, agent control, Vim mode, mouse support, and terminal-specific bindings."
+---
+
+Grok Build's terminal UI is driven entirely by keyboard. All key bindings are built in and **cannot currently be remapped**. The shortcuts you have available depend on which of Grok's two input modes is active: **Simple** (the default) or **Vim** (opt-in).
+
+---
+
+## Input Modes
+
+| Mode | How to Enable | Scrollback Navigation |
+|------|---------------|-----------------------|
+| **Simple** (default) | Active by default — no configuration required | Arrow keys, `Shift+Arrow` for turn jumps, `Space` or any letter auto-focuses the prompt |
+| **Vim** | Set `vim_mode = true` under `[ui]` in `~/.grok/config.toml`, or toggle at runtime with `/vim-mode` | `j`/`k` up/down, `H`/`L` turn jumps, `J`/`K` response jumps, `h`/`l` fold, `e`/`E` expand/collapse, `i`/`Tab`/`Space` to focus the prompt |
+
+<Note>
+Single-letter and `Shift+letter` bindings in the scrollback context — `j/k`, `h/l`, `g/G`, `L/H`, `y/Y`, `o/O`, `r`, `x`, `e/E`, and `i` — require `[ui].vim_mode = true` in `~/.grok/config.toml` (or `/vim-mode` to toggle at runtime). Arrow keys, `Tab`, `Esc`, `Space`, `PageUp`/`PageDown`, and every `Ctrl+letter` shortcut work in **both** modes.
+</Note>
+
+---
+
+## Navigation (Scrollback Focused)
+
+Move through conversation entries in the scrollback pane. The **Key** column shows the Vim-mode binding; **Alt Key** shows the Simple-mode equivalent.
+
+| Key | Alt Key | Action |
+|-----|---------|--------|
+| `j` | `Down` | Select next entry |
+| `k` | `Up` | Select previous entry |
+| `⇧L` | `Shift+Right` | Jump to next turn (user prompt) |
+| `⇧H` | `Shift+Left` | Jump to previous turn (user prompt) |
+| `⇧J` | — | Jump to next assistant response |
+| `⇧K` | — | Jump to previous assistant response |
+| `g` | — | Go to top of scrollback |
+| `⇧G` | — | Go to bottom of scrollback |
+| `Ctrl+K` | — | Scroll up one line (without changing selection) |
+| `Ctrl+J` | — | Scroll down one line (without changing selection) |
+| `PageUp` | — | Scroll up one page (selection moves to top of viewport) |
+| `PageDown` | — | Scroll down one page (selection moves to bottom of viewport) |
+| `Ctrl+U` | — | Scroll up half page |
+| `Ctrl+D` (`Shift+D` in VS Code) | — | Scroll down half page |
+
+`PageUp` and `PageDown` also scroll the conversation while the prompt is focused, without moving focus or changing your draft. An active prompt history, `@` file search, slash menu, or completion dropdown captures these keys for its own navigation instead.
+
+---
+
+## View Controls (Scrollback Focused)
+
+Control how entries are displayed.
+
+| Key | Alt Key | Action |
+|-----|---------|--------|
+| `h` | `Left` | Collapse selected entry |
+| `l` | `Right` | Expand selected entry |
+| `e` | — | Toggle fold on selected entry |
+| `⇧E` | — | Expand all / collapse all entries |
+| `Ctrl+E` | — | Expand/collapse all thinking blocks |
+| `r` | — | Toggle raw Markdown on selected entry |
+
+### Block Content
+
+With a block selected, these actions operate on its content:
+
+| Key | Action |
+|-----|--------|
+| `y` | Copy block content to clipboard |
+| `⇧Y` | Copy block metadata (e.g., the shell command) to clipboard |
+| `Enter` | Open block content in the fullscreen viewer |
+| `Ctrl+F` | Open block content in the fullscreen viewer (alternate binding) |
+
+---
+
+## Focus
+
+Switch keyboard focus between the prompt input and the scrollback pane.
+
+| Key | Alt Key | Context | Action |
+|-----|---------|---------|--------|
+| `Tab` | `Space` (also `i` in Vim mode) | Scrollback focused | Focus the prompt input |
+| `Tab` | — | Prompt focused | Focus the scrollback |
+| `Tab` | `Shift+Tab` (backwards) | A blocking card is focused | Walk that card's rows, wrapping at the ends |
+| `Tab` | `Space` (also `i` in Vim mode) | Scrollback focused with a card parked | Return keyboard to the parked card |
+| `Enter` | — | Prompt focused | Send the current prompt |
+
+**`Esc` is not a focus key.** It follows cancel / clear / rewind semantics depending on state. Overlays, modals, slash/file dropdowns, voice, search, and selection steal `Esc` first.
+
+---
+
+## During an Active Turn
+
+While the agent is generating, the follow-up behavior depends on your `[ui].follow_up_behavior` setting (`"queue"` by default):
+
+- **Plain `Enter`** with text in the composer **queues** a follow-up to run after the current turn ends. With `"steer"` mode, it still shows the row in the queue, then injects it mid-turn at the next safe tool/model gap.
+- **`Enter` again on an empty composer** (double-Enter) sends the **top** queued follow-up immediately.
+- The **send-now chord** is a cancel-and-send: it stops the current turn and sends your message as the next turn.
+  - Non-empty composer → cancel and send that text now.
+  - Empty composer + queued follow-up → send the top queued item now.
+  - Idle, or empty composer with nothing queued → no-op.
+
+| Terminal | Primary | Alternates | Action |
+|----------|---------|------------|--------|
+| Default | `Ctrl+Enter` | `Ctrl+I` | Send now (cancels current turn, runs your message next) |
+| Apple Terminal | `Ctrl+O` | `Ctrl+Enter`, `Ctrl+I` | Send now |
+| VS Code family (VS Code, Cursor, Windsurf, Zed) | **`Ctrl+L`** | *(none)* | Send now |
+
+In `/multiline` mode, `Shift+Enter` (or `Alt+Enter`) sends while plain `Enter` inserts a newline — except on an empty composer mid-turn with a queued follow-up, where plain `Enter` still sends the top queued row.
+
+<Note>
+**WezTerm:** Modified Enter keys require `enable_kitty_keyboard = true` in your WezTerm config. See the terminal support guide for full steps and a one-line workaround.
+</Note>
+
+<Note>
+**VS Code family `Ctrl+L`:** Grok uses `Ctrl+L` for send-now (interject) and leaves the extensions shortcut unbound — open plugins with `/plugins` or the command palette. If your terminal profile still maps **Clear** to `Ctrl+L`, that host binding will steal the chord; rebind or remove it so the PTY receives the form feed character (`\x0c`).
+</Note>
+
+---
+
+## Agent-Level Actions
+
+Actions that affect the agent session, available from the agent screen.
+
+| Key | Context | Action |
+|-----|---------|--------|
+| `Ctrl+P` | Agent screen | Open the command palette |
+| `?` (`Shift+/`) | Agent screen | Open the command palette (alternate binding) |
+| `Ctrl+M` | Scrollback focused | Open the model picker / switch model |
+| `Ctrl+M` | Prompt focused | Toggle multiline input mode |
+| `Ctrl+C` | Agent screen | Cancel the current turn (or clear a non-empty draft first) |
+| `Ctrl+O` | Agent screen | Toggle always-approve (YOLO) mode |
+| `Ctrl+S` | Agent screen | Open the session picker (resume a previous session) |
+| `Ctrl+;` (alt: `Ctrl+'`) | Agent screen | Toggle the prompt queue pane |
+| `Shift+Tab` | Prompt focused | Cycle mode: Normal → Plan → Always-approve |
+| `Ctrl+B` | Agent screen | Send the running foreground command to the background |
+| `Ctrl+T` | Agent screen | Toggle the todos pane |
+| `Ctrl+G` | Agent screen (full TUI) | Toggle the tasks pane |
+| `Ctrl+G` | Ordinary composer (minimal mode) | Edit the current draft in an external editor without sending |
+| `Ctrl+L` | Agent screen (non–VS Code family only) | Open the extensions modal |
+| `↑` | Prompt focused (empty prompt, normal mode) | Open prompt history panel |
+| `!` | Prompt focused (empty prompt) | Enter shell mode |
+| `Ctrl+.` (alt: `Ctrl+X`) | Agent screen | Open the keyboard shortcuts help |
+| `F2` (alt: `Ctrl+,` / `Cmd+,`) | Agent screen | Open the settings modal |
+
+<Note>
+**`Ctrl+;` on local macOS VS Code family:** the primary binding is `Ctrl+4`; `Ctrl+;` and `Ctrl+'` still work as alternates. SSH and non-Mac terminals keep `Ctrl+;` / `Ctrl+'` as the primary.
+</Note>
+
+<Note>
+**`Ctrl+.` keyboard protocol note:** this chord requires the Kitty keyboard protocol (or tmux `extended-keys on`). On VS Code, Cursor, Windsurf, Zed, VTE, Apple Terminal, Windows Terminal, JetBrains, and tmux with `extended-keys off`, Grok advertises **`Ctrl+X`** as the primary shortcuts-cheatsheet key. `Ctrl+X` always works as a classic control character even when `Ctrl+.` does not. Run `/doctor` if modified keys misbehave in tmux.
+</Note>
+
+---
+
+## Global Actions
+
+Available from any screen.
+
+| Key | Alt Key | Action | Confirmation |
+|-----|---------|--------|--------------|
+| `Ctrl+N` | — | Create a new session (optionally in a git worktree) | Yes (double-press within 1000 ms) |
+| `Ctrl+\` | — | Open or toggle the Agent Dashboard | No |
+| `Ctrl+Q` | `Ctrl+D` | Quit the application | Yes (double-press within 1000 ms) |
+
+Actions marked with "Yes" require a **double-press within 1000 ms** to confirm. Press once to see the confirmation prompt, then press again to proceed. This prevents accidental session loss.
+
+**VS Code family terminals** (VS Code, Cursor, Windsurf, Zed): `Ctrl+Q` is captured by the host, so Grok makes **`Ctrl+D` the sole quit key** (`Ctrl+Q` is not bound). Half-page-down is rebound to bare **`Shift+D`**. Mid-turn interject uses **`Ctrl+L`**; extensions are opened via `/plugins` instead of `Ctrl+L`.
+
+To return to the welcome screen, use the `/home` slash command (alias `/welcome`) from inside a session — there is no key binding for this.
+
+---
+
+## Mouse Support
+
+The TUI supports mouse interaction in all terminals that report mouse events:
+
+- **Click** on a scrollback entry to select it
+- **Scroll wheel** to scroll through the scrollback
+- **Click** on the prompt area to focus it
+- **Hover** over the prompt to see a highlight (configurable via `pager.toml`)
+- **Middle click** on Linux X11/XWayland to paste the PRIMARY selection
+
+### Linux PRIMARY and CLIPBOARD
+
+Linux X11 has two independent text selections:
+
+- `Ctrl+V` reads **CLIPBOARD** — the explicit copy/cut buffer. It never falls back to PRIMARY.
+- An unmodified **middle click** reads **PRIMARY** (the current mouse selection), only when `DISPLAY` is non-empty. Pure X11 uses its native reader; XWayland requires `xclip` or `xsel` on `PATH`.
+- `Shift+Insert` is the terminal-native way to paste selected text.
+
+Over SSH, the remote Grok process usually cannot access the local X11 selection. Use `Shift+Insert` or `Shift+Middle Click` so the local terminal sends selected text through the PTY.
+
+---
+
+## Image Paste & Drag-and-Drop
+
+| Action | macOS | Linux | Windows |
+|--------|-------|-------|---------|
+| Drag image from file manager into the prompt | Finder ✓ | Files / Dolphin ✓ | Explorer ✓ |
+| Copy a file in the file manager, then paste | `Cmd+V` | `Ctrl+V` | `Ctrl+V` |
+| Screenshot or "Copy Image" in clipboard, then paste | `Cmd+V` | `Ctrl+V` | **`Alt+V`** |
+
+Non-image files insert their absolute path as text instead of a chip.
+
+<Note>
+**`Alt+V` on Windows** is Grok-specific. Windows Terminal's default `Ctrl+V` only pastes plain text and silently drops image clipboards; `Alt+V` bypasses that interceptor. To also use `Ctrl+V` for images, add `{ "command": null, "keys": "ctrl+v" }` to `actions` in your Windows Terminal `settings.json`.
+</Note>
+
+---
+
+## Quick Reference Card
+
+### Simple Mode (Default) — Scrollback Focused
+
+```
+Navigation:   Up/Down (prev/next entry)    Shift+Left/Right (prev/next turn)
+Scrolling:    Ctrl+J/K (line)   PgUp/PgDn (page)   Ctrl+U/D (half page)
+Focus prompt: Space or any letter key (auto-focuses and types)
+```
+
+### Vim Mode — Scrollback Focused
+
+```
+Navigation:   j/k (up/down)    H/L (prev/next turn)    K/J (prev/next response)
+              g/G (top/bottom)
+Scrolling:    Ctrl+J/K (line)  Ctrl+U/D (half page; D=Shift+D in VSCode)
+              PgUp/PgDn (page)
+Folding:      h/l (collapse/expand)    e (toggle)    E (expand/collapse all)
+Content:      y (copy)    Y (copy metadata)    Enter (fullscreen)
+View:         r (raw markdown)    Ctrl+E (thinking blocks)
+Focus prompt: i, Tab, or Space
+```
+
+### Prompt Focused (Both Modes)
+
+```
+Send:             Enter
+Newline:          Shift+Enter or Alt+Enter
+Multiline toggle: Ctrl+M
+Paste text/file:  Ctrl+V (macOS/Linux) or Ctrl+V (Windows — text/files only)
+Paste image:      Cmd+V (macOS)   Ctrl+V (Linux)   Alt+V (Windows screenshots)
+Leave:            Tab (back to scrollback)
+Cancel (running): Ctrl+C (empty prompt; non-empty draft clears first)
+Clear (idle):     Esc Esc within 800 ms (non-empty prompt)
+Rewind (idle):    Esc Esc within 800 ms (empty prompt + messages)
+```
+
+### Always Available
+
+```
+Command palette:  Ctrl+P or ?
+Model picker:     Ctrl+M (from scrollback)
+Cancel:           Ctrl+C
+Always-approve:   Ctrl+O (toggle YOLO)
+New session:      Ctrl+N (double-press to confirm, then choose normal/worktree)
+Quit:             Ctrl+Q (or Ctrl+D in VS Code family)
+```

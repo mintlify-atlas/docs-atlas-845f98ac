@@ -1,0 +1,281 @@
+---
+title: "Terminal Compatibility and Troubleshooting for Grok Build"
+sidebarTitle: "Terminal Support"
+description: "Diagnose and fix terminal issues in Grok Build — color support, clipboard, keyboard input, SSH, tmux, Zellij, WezTerm, VS Code, and the /doctor command."
+---
+
+Grok Build runs as a full-screen TUI and relies on terminal support for color, clipboard, keyboard input, mouse input, and full-screen display. Terminals, multiplexers, containers, and SSH sessions can handle these features differently. Use `/doctor` to diagnose issues quickly.
+
+<Tip>
+  Run `/doctor` after any terminal configuration change to verify Grok detects
+  your setup correctly — including after editing your tmux config, switching
+  terminal emulators, or starting an SSH session.
+</Tip>
+
+---
+
+## Diagnosing Issues
+
+### /doctor (inside Grok)
+
+Run **`/doctor`** from the Grok prompt to check the current session. Doctor reports on:
+
+- Terminal ID and detection accuracy
+- Color level (truecolor, 256-color, basic)
+- Clipboard routes (native, tmux, OSC 52)
+- Keyboard protocol (Kitty keyboard, legacy)
+- Mouse reporting status
+- Notification focus tracking
+- Microphone / voice availability (where applicable)
+
+`/terminal-setup`, `/terminal-check`, and `/terminal-info` are aliases for `/doctor`.
+
+### grok doctor (from the shell)
+
+Run **`grok doctor`** from your shell when Grok cannot start. Use `grok doctor --json` for a machine-readable report. A report can contain issues or recommendations and still exit successfully.
+
+### Applying Fixes
+
+When Doctor finds an unhealthy tmux setting, **`/doctor fix`** lists available automatic fixes. Apply one named fix at a time:
+
+```bash
+/doctor fix tmux-clipboard
+grok doctor fix dcs-passthrough --yes
+```
+
+Doctor can persist these four tmux options automatically:
+
+| Fix ID | tmux option set |
+| --- | --- |
+| `terminal.tmux-clipboard` | `set -g set-clipboard on` |
+| `terminal.dcs-passthrough` | `set -wg allow-passthrough on` |
+| `terminal.tmux-extended-keys` | `set -g extended-keys on` |
+| `terminal.tmux-truecolor` | `set -as terminal-features ",*:RGB"` |
+
+Grok edits only the persistent config (not the live tmux server) and makes a backup before changing any existing file. Reload your config and detach/reattach after applying, then run `/doctor` again to verify.
+
+---
+
+## Supported Terminals
+
+| Terminal | Platform | Notes |
+| --- | --- | --- |
+| Ghostty | macOS | Fully supported |
+| iTerm2 | macOS | May require OSC 52 clipboard permission; run `/doctor` |
+| Apple Terminal | macOS | Does not support OSC 52; uses `Ctrl+O` for interjection |
+| WezTerm | macOS, Linux, Windows | Add `enable_kitty_keyboard = true` to config for `Ctrl+Enter` |
+| Kitty | macOS, Linux | Supports Kitty keyboard protocol natively |
+| Alacritty | macOS, Linux | Supported |
+| Rio | macOS, Linux | Supported |
+| GNOME Terminal / Console / Tilix (VTE) | Linux | Supported |
+| Konsole | Linux | Supported; handles RTL text |
+| foot | Linux (Wayland) | Wayland-native; supported |
+| Windows Terminal | Windows | Supported |
+| VS Code / Cursor / Windsurf / Zed | Cross-platform | Special key mappings; see terminal-specific notes below |
+| JetBrains IDE terminals | Cross-platform | Supported |
+| Warp | macOS | Supported |
+| tmux | Multiplexer | `extended-keys on` recommended; use `grok wrap` for nested SSH |
+| Zellij | Multiplexer | Use Unlock-First preset to avoid key conflicts |
+| screen / Byobu (screen) | Multiplexer | Limited support; Byobu-screen users should switch to tmux backend |
+| SSH | Remote | Clipboard via OSC 52 or `grok wrap`; see clipboard notes |
+
+---
+
+## Common Problems and Fixes
+
+<AccordionGroup>
+  <Accordion title="Colors look wrong or missing">
+    Run `/doctor`. A fully supported setup shows `color truecolor` and `themes all`.
+
+    Inside tmux there are two separate questions: what color Grok emits, and what color survives the multiplexer. The `color` line answers the first. When the attached tmux client is not marked `RGB`, tmux rewrites every 24-bit color to the nearest color the outer terminal's terminfo advertises, which can be as few as eight — themes then look washed out.
+
+    Doctor reports this as `terminal.tmux-truecolor`. Apply the fix, then **reload your tmux config and detach/reattach** — the server reads the new option only on reload, and a client fixes its color depth only at attach, so neither step alone is sufficient.
+  </Accordion>
+
+  <Accordion title="Clipboard paste not working">
+    Run `/doctor` to see which clipboard routes are available: **native**, **tmux**, and **OSC 52**. On Linux:
+
+    - `Ctrl+V` reads the **CLIPBOARD** selection and never falls back to PRIMARY.
+    - An unmodified middle click reads **PRIMARY** only when `DISPLAY` is set. Under XWayland, `xclip` or `xsel` must be on `PATH`.
+    - `Shift+Insert` remains the terminal's selected-text paste and is always available.
+
+    If a terminal does not implement OSC 52 and displays the encoded payload as text, set `GROK_CLIPBOARD_NO_OSC52=1` before starting Grok. `/doctor` will then show `osc 52 off`.
+  </Accordion>
+
+  <Accordion title="Wayland clipboard issues">
+    Modern Wayland compositors can update the clipboard without keeping the terminal focused. Older compositors may require Grok to remain focused until the copy message appears. Grok shows a startup warning when this applies.
+
+    If you need to disable the data-control route, set `GROK_CLIPBOARD_NO_DATA_CONTROL=1`. Copies will then fall back to command-line clipboard tools (`xclip` / `xsel`).
+  </Accordion>
+
+  <Accordion title="Ctrl+Enter doesn't work in WezTerm">
+    WezTerm ships with the Kitty keyboard protocol disabled. Run `/doctor` — the `terminal.wezterm-kitty` finding shows exactly which setting to change and the restart step needed.
+
+    To enable it manually, add the following to your WezTerm config:
+
+    ```lua
+    -- ~/.wezterm.lua
+    local config = wezterm.config_builder()
+    config.enable_kitty_keyboard = true
+    return config
+    ```
+
+    Over SSH, Doctor shows only the workaround that can work in the current session.
+  </Accordion>
+
+  <Accordion title="VS Code family key differences">
+    VS Code, Cursor, Windsurf, and Zed terminals use xterm.js, which only partially implements the Kitty keyboard protocol and mis-encodes some shifted printable keys. Grok does not negotiate the protocol in these terminals.
+
+    Key differences in VS Code terminals:
+
+    - **`Shift+Enter`** may arrive as a plain `Enter`. Use **`Alt+Enter`** to insert a newline instead.
+    - **`Ctrl+L`** is used for interject (instead of `Ctrl+Enter`).
+    - **`Ctrl+D`** is used for quit.
+
+    Run `/doctor` — it reports `terminal.newline-fallback` with the detected explanation and workaround.
+
+    This also affects VS Code reached over SSH when `TERM_PROGRAM` is not forwarded.
+  </Accordion>
+
+  <Accordion title="SSH clipboard issues">
+    A remote Grok process normally cannot read the local terminal's selection. Options:
+
+    - Use **`Shift+Insert`** for terminal-native paste.
+    - Hold `Shift` while middle-clicking when the terminal bypasses mouse reporting.
+    - Use **`grok wrap ssh user@host`** from your local machine for direct clipboard forwarding.
+
+    When Grok cannot identify the outer terminal over SSH, it marks the OSC 52 route as not verified. The copy toast names the backup file (`~/.grok/last-copy.txt`) so you can retrieve the text. You can also use `/copy <file>` or `/minimal`.
+
+    **Apple Terminal over SSH**: Apple Terminal does not support OSC 52, so remote copies cannot reach the local clipboard. Use `grok wrap` or retrieve from the backup file.
+
+    For repeated SSH use, run `grok doctor fix ssh-wrap` to add a shell alias automatically.
+  </Accordion>
+
+  <Accordion title="Zellij key conflicts">
+    Zellij can intercept `Ctrl`/`Alt` keys before they reach Grok. On Zellij 0.41 or later, switch to the **Unlock-First (non-colliding)** preset:
+
+    1. Press `Ctrl+o`, then `c`.
+    2. Open **Change Mode Behavior**.
+    3. Select **Unlock-First (non-colliding)**.
+    4. Press `Enter` to apply.
+
+    Press `Ctrl+g` when you need Zellij's own pane or session controls. In minimal mode, if `Ctrl+G` still does not reach Grok, open the command palette and select **Edit Prompt in External Editor**.
+
+    Zellij and tmux control mode can also limit the alternate screen. Grok normally uses inline mode in those environments. Run `/doctor` to see the detected condition, or configure `[terminal] alt_screen` in `~/.grok/pager.toml`.
+  </Accordion>
+
+  <Accordion title="tmux extended-keys configuration">
+    Without extended keys, tmux cannot distinguish many modified key chords. Add this to your `~/.tmux.conf`:
+
+    ```
+    set -g extended-keys on
+    ```
+
+    Or apply it automatically with:
+
+    ```bash
+    /doctor fix tmux-extended-keys
+    ```
+
+    After applying, reload your config (`tmux source ~/.tmux.conf`) and detach/reattach.
+  </Accordion>
+
+  <Accordion title="Mouse not working">
+    If Grok stops receiving mouse input, re-enable mouse reporting in the terminal:
+
+    - **Apple Terminal**: **View → Allow Mouse Reporting** (`Cmd+R`).
+    - **iTerm2**: **Settings → Profiles → Terminal → Enable mouse reporting**.
+
+    For other terminals, consult your terminal's documentation for mouse reporting settings.
+  </Accordion>
+
+  <Accordion title="Voice dictation not working">
+    After about 10 seconds without a transcript, Grok stops capture and shows **"No speech was detected. Voice stopped."**
+
+    On macOS, a denied microphone grant can look the same as silence — permission belongs to the terminal hosting Grok, not Grok itself. Open **System Settings → Privacy & Security → Microphone**, enable the terminal, and restart it. If access is already on, check **System Settings → Sound → Input**.
+
+    Run `/doctor` while voice mode is on. The **Voice** section shows the microphone Grok would use. If no input device is available, Doctor shows `voice.no-input-device`. Note that Doctor cannot detect denied macOS microphone access passively when macOS supplies silence.
+
+    If the capture helper may be the problem, set `GROK_VOICE_CAPTURE=inprocess` to use the in-process fallback.
+  </Accordion>
+
+  <Accordion title="Byobu key conflicts">
+    Byobu on GNU screen has limited support. Run `/doctor` — it reports `terminal.byobu-screen` and explains how to switch Byobu to its tmux backend, which has full support.
+  </Accordion>
+
+  <Accordion title="RTL text renders backwards">
+    Many terminals already reorder right-to-left text themselves (VTE-based terminals, Terminal.app, Konsole, mlterm, and others). Grok does **not** reorder RTL by default to avoid double-reordering.
+
+    If Arabic or Persian text in scrollback reads backwards, enable app-side reordering in `~/.grok/pager.toml`:
+
+    ```toml
+    [scrollback.display]
+    rtl_bidi = true
+    ```
+
+    This setting reloads with appearance config (no full restart required). If text looks correct with the default and becomes wrong after enabling this, turn it back off — your terminal is already handling bidi.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Terminal-Specific Notes
+
+### Kitty
+
+Kitty supports the Kitty keyboard protocol natively, which allows Grok to distinguish modified key chords that legacy terminals cannot. No additional configuration is needed.
+
+### tmux
+
+`extended-keys on` is recommended for the best keyboard experience. Use **`grok wrap`** when connecting to remote sessions over SSH — it provides direct clipboard forwarding and restores terminal modes after a dropped connection.
+
+For true-color support inside tmux, apply the `terminal.tmux-truecolor` fix and reload:
+
+```bash
+/doctor fix tmux-truecolor
+```
+
+Then reload your tmux config and detach/reattach.
+
+### VS Code, Cursor, Windsurf, and Zed
+
+These terminals use xterm.js with partial Kitty keyboard support. Key mapping differences:
+
+| Action | Standard | VS Code family |
+| --- | --- | --- |
+| Interject | `Ctrl+Enter` | `Ctrl+L` |
+| Quit | `Ctrl+D` | `Ctrl+D` |
+| Insert newline | `Shift+Enter` | `Alt+Enter` |
+
+Run `/doctor` for a full list of detected differences in your specific terminal.
+
+### WezTerm
+
+Add `enable_kitty_keyboard = true` to your WezTerm Lua config to enable `Ctrl+Enter` for interjection. Run `/doctor` after restarting WezTerm to confirm the keyboard protocol is detected.
+
+---
+
+## The grok wrap Command
+
+`grok wrap` wraps an SSH, container, or pod shell command to provide clipboard forwarding and terminal mode restoration:
+
+```bash
+grok wrap ssh user@host
+grok wrap docker exec -it my-container bash
+```
+
+This is especially useful when:
+- You need clipboard access on a remote machine.
+- A terminal session may drop and leave the terminal in a broken state.
+- You are running Grok inside a multiplexer over SSH.
+
+<Warning>
+  `grok wrap` is experimental and may not work in every setup. Run `/doctor`
+  inside the wrapped session to verify clipboard and keyboard detection.
+</Warning>
+
+---
+
+## Still Stuck?
+
+Run **`/feedback`** inside Grok to report an issue directly to the team.

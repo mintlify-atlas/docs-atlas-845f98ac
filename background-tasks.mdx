@@ -1,0 +1,231 @@
+---
+title: "Background Tasks and the /loop Command in Grok Build"
+sidebarTitle: "Background Tasks"
+description: "Run long-lived commands in the background while the conversation continues. Use /loop for recurring tasks, the monitor tool for live output, and Ctrl+B to demote."
+---
+
+Grok can run processes without blocking the conversation using background commands and the tasks system. Whether you're starting a dev server, watching a log file, or polling CI status, Grok manages long-lived work while staying responsive to your next prompt.
+
+---
+
+## Background Commands
+
+Set `background: true` on the `run_terminal_command` tool to run a command in the background. The tool returns a task ID immediately and the command runs independently — Grok can continue the conversation without waiting for the process to finish.
+
+### How It Works
+
+1. The agent calls `run_terminal_command` with `background: true`.
+2. The command starts in the background and Grok receives a `task_id` immediately.
+3. The conversation continues without waiting for the command to finish.
+4. When the command completes, a notification appears in the conversation.
+
+### Send a Running Command to the Background
+
+Press **`Ctrl+B`** in the interactive TUI to send the currently running foreground command to the background. This is the only backgrounding shortcut. Use it when:
+
+- A command takes longer than expected.
+- You want to ask Grok something else while a command runs.
+- You realize mid-run that a process will be long-lived.
+
+The task keeps running, and you receive a notification when it completes.
+
+<Tip>
+  Use `Ctrl+B` to send a long-running compilation to the background so you can
+  ask Grok questions while it builds. You'll get a notification the moment it
+  finishes.
+</Tip>
+
+---
+
+## Getting Task Output
+
+Use the `get_command_or_subagent_output` tool to check on a background command or subagent at any time.
+
+- `get_command_or_subagent_output(task_id)` — returns the current output and status without waiting.
+- `get_command_or_subagent_output(task_id, timeout_ms=30000)` — waits up to the given milliseconds for the task to complete.
+
+### Waiting for Multiple Tasks
+
+Use `wait_commands_or_subagents` to block on several tasks at once:
+
+| Parameter    | Description                                                              |
+| ------------ | ------------------------------------------------------------------------ |
+| `task_ids`   | The list of task IDs to wait for (maximum 20)                            |
+| `mode`       | `wait_any` returns when the first task completes; `wait_all` waits for every task |
+| `timeout_ms` | Maximum time to wait in milliseconds (default: 30 seconds)               |
+
+The tool returns the status and output for every task you list.
+
+### Killing a Background Task
+
+Use `kill_command_or_subagent(task_id)` to terminate a running background task or subagent. The tool sends `SIGTERM` then `SIGKILL` to shell processes, and sends Cancel and Shutdown to subagents. It reports success if the task was killed or had already exited.
+
+---
+
+## The /loop Command
+
+`/loop` runs a prompt on a recurring interval. It is useful for polling tasks, periodic checks, and continuous monitoring without manual intervention.
+
+### Syntax
+
+```
+/loop [interval] <prompt>
+```
+
+The interval format supports:
+
+| Format | Example | Description                  |
+| ------ | ------- | ---------------------------- |
+| `Ns`   | `60s`   | Every N seconds (minimum 60) |
+| `Nm`   | `5m`    | Every N minutes              |
+| `Nh`   | `2h`    | Every N hours                |
+| `Nd`   | `1d`    | Every N days                 |
+
+### Examples
+
+```
+/loop 5m Check if the test suite passes and report any failures
+/loop 2h Summarize new commits since the last check
+/loop 60s Check if the dev server at localhost:3000 is responding
+```
+
+### Behavior
+
+- The prompt fires immediately on creation, then repeats at the specified interval.
+- Each firing creates a new agent turn.
+- Recurring tasks auto-expire after 7 days.
+- A maximum of 50 scheduled tasks can be active at once.
+
+To stop a loop, open the tasks pane with `Ctrl+G`, find the loop entry, and use the kill action — or call `kill_command_or_subagent(task_id)` directly with the loop's task ID.
+
+---
+
+## The Monitor Tool
+
+The `monitor` tool streams events from a long-running script. Each line of output becomes a notification in the conversation. Use `monitor` for real-time event streams; use `/loop` for periodic checks.
+
+### How It Works
+
+1. Provide a shell command (`command`) and a short `description` that appears in every notification.
+2. Grok merges the command's stdout and stderr into a single output file.
+3. Each new line in that file becomes a notification delivered to the conversation.
+4. The monitor runs until the command exits or you stop it.
+
+### Script Guidelines
+
+- **Always use `grep --line-buffered` in pipes.** Without it, pipe buffering delays events by minutes.
+- **Handle transient failures in poll loops** (`curl ... || true`). One failed request should not stop the monitor.
+- **Use selective filters.** Every line becomes a message — never pipe raw logs.
+- **Set poll intervals to match the source.** Use 30 seconds or more for remote APIs; 0.5–1 second for local checks.
+
+### Examples
+
+```bash
+# Watch for errors in a log file
+tail -f /var/log/app.log | grep --line-buffered "ERROR"
+
+# Monitor file changes in a directory
+inotifywait -m --format '%e %f' /watched/dir
+
+# Poll GitHub for new PR comments
+last=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+while true; do
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  gh api "repos/owner/repo/issues/123/comments?since=$last" \
+    --jq '.[] | "\(.user.login): \(.body)"'
+  last=$now; sleep 30
+done
+```
+
+### Persistent Monitors
+
+Set `persistent: true` for monitors that should run for the lifetime of the session — for example, PR monitoring, log tailing, or CI status watching. Stop a persistent monitor with `kill_command_or_subagent(task_id)`.
+
+---
+
+## The Tasks Pane
+
+Press **`Ctrl+G`** in the interactive TUI to toggle the tasks pane. This pane shows in a single view:
+
+- Running subagents and their progress
+- Active background tasks and their status
+- Monitor and `/loop` tasks, each with a live line-count badge
+- The task ID for each entry
+
+To toggle the prompt queue instead, press `Ctrl+;`.
+
+### Still-Running Status Line
+
+Whenever background work is in flight while the agent appears idle, a persistent status line appears above the prompt:
+
+```
+◎ 1 command · 2 monitors · 1 loop · 1 subagent still running
+```
+
+This counts running background commands, monitors, scheduled `/loop` tasks, and background subagents, and updates live as each finishes. While a turn is waiting on background work, the status line adds:
+
+```
+◎ 1 command still running · send a message to interrupt
+```
+
+Sending a message interrupts the wait and runs your message immediately.
+
+---
+
+## Scheduler API
+
+The scheduler is the lower-level API that `/loop` wraps. Use it for more control over task scheduling.
+
+### scheduler_create
+
+| Parameter          | Description                                                           |
+| ------------------ | --------------------------------------------------------------------- |
+| `interval`         | How often to run: `"5m"`, `"2h"`, `"1d"`, `"60s"`                    |
+| `prompt`           | The prompt text to execute on each fire                               |
+| `fire_immediately` | Fire on creation in addition to the interval (default: `false`)       |
+| `recurring`        | Repeat (default: `true`) or fire once (`false`)                       |
+| `durable`          | Persist across sessions (default: `false`)                            |
+
+### scheduler_list
+
+Lists all active scheduled tasks with their IDs, prompts, intervals, and next fire times.
+
+### scheduler_delete
+
+Cancels a scheduled task by ID. Returns success if the task was found and removed. Use `scheduler_create` with `recurring: false` for delayed one-shot tasks.
+
+---
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Dev Server Watching" icon="server">
+    Start a development server with `background: true` and continue coding.
+    Grok notifies you when the server is ready or if it crashes.
+  </Card>
+  <Card title="Test Suite Runners" icon="vial">
+    Use `/loop 5m` to run your test suite every 5 minutes and report only new
+    failures since the last run.
+  </Card>
+  <Card title="Build Monitoring" icon="hammer">
+    Kick off a long compilation in the background with `Ctrl+B`, then use
+    `get_command_or_subagent_output` to fetch results when you're ready.
+  </Card>
+  <Card title="Recurring Checks" icon="rotate">
+    Use `monitor` with `grep --line-buffered` to watch application logs for
+    `ERROR` or `WARN` entries in real time, with each match surfaced as a
+    notification.
+  </Card>
+</CardGroup>
+
+---
+
+## Best Practices
+
+- **Use `background` for one-shot long commands** — builds, test suites, server starts.
+- **Use `/loop` for periodic checks** — CI status, test runs, health checks.
+- **Use `monitor` for real-time event streams** — log tailing, file watching.
+- **Use `scheduler_create` with `recurring: false`** for delayed one-shot tasks.
+- **Keep monitor filters tight** — prefer `grep --line-buffered` over raw log streams.
+- **Do not use sleep loops in normal commands to poll** — use `get_command_or_subagent_output` with `timeout_ms` instead.
+- **Set reasonable poll intervals** — 30s+ for remote APIs to avoid rate limits, shorter for local checks.

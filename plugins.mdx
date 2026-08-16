@@ -1,0 +1,344 @@
+---
+title: "Grok Build Plugins: Install and Create Marketplaces"
+sidebarTitle: "Plugins"
+description: "Install plugin bundles from marketplaces, manage trust and permissions, create your own marketplace, and distribute plugins across your organization in Grok Build."
+---
+
+Plugins bundle skills, slash commands, agents, hooks, and MCP servers into one installable unit. You get plugins from a marketplace, install the ones you want, and Grok loads everything they add. A plugin's hooks and MCP servers stay inactive until you trust it.
+
+## How Marketplaces Work
+
+A marketplace is a catalog of plugins that someone has published and shared. Using one is a two-step process:
+
+1. **Add the marketplace** so Grok can show what it offers. Nothing installs yet.
+2. **Install the plugins you want**, one at a time.
+
+## Add a Marketplace
+
+A marketplace source is a GitHub repository, a git URL on any host, or a local folder. Add one from the command line:
+
+```bash
+grok plugin marketplace add my-org/team-plugins                  # GitHub shorthand (owner/repo)
+grok plugin marketplace add https://gitlab.com/acme/plugins.git  # any git host
+grok plugin marketplace add ./my-marketplace                     # a local folder
+```
+
+You can also declare sources in config so they are always present.
+
+### In config.toml
+
+```toml
+[[marketplace.sources]]
+name = "My Team Plugins"
+git = "https://github.com/my-org/plugins.git"
+
+[[marketplace.sources]]
+name = "Local Dev"
+path = "~/dev/my-plugins"
+```
+
+### In settings.json
+
+Add sources under `extraKnownMarketplaces`, keyed by name. Place this file at `~/.grok/settings.json` or `~/.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "my-marketplace": {
+      "source": { "source": "git", "url": "git@github.com:my-org/plugins.git" }
+    }
+  }
+}
+```
+
+## Install and Use a Plugin
+
+Once a marketplace is added, install a plugin by name:
+
+```bash
+grok plugin install deploy-tools --trust
+```
+
+The source you install accepts several forms:
+
+- `owner/repo` (GitHub shorthand), `owner/repo@v1.0` (a ref), `owner/repo@<commit-sha>` (exact commit), or `owner/repo#subdir`
+- A full git URL (`https://github.com/user/repo.git`) or SSH (`git@github.com:user/repo.git`)
+- A local path (`./local-dir` or `/absolute/path`)
+
+Running `grok plugin install <source>` without `--trust` shows the source, warns that installing activates the plugin's hooks, MCP servers, and skills, then stops. Add `--trust` to proceed. Only install plugins from sources you trust.
+
+A plugin's skills appear in the slash menu. When a skill name is ambiguous, Grok shows the qualified form prefixed by the plugin name, for example `/deploy-tools:release`.
+
+## Manage Plugins
+
+### From the Command Line
+
+| Command | Description |
+|---------|-------------|
+| `grok plugin list [--json] [--available]` | List installed plugins (`--available` requires `--json`) |
+| `grok plugin uninstall <name> [--confirm] [--keep-data]` | Remove a plugin (aliases: `rm`, `remove`) |
+| `grok plugin update [<name>]` | Update one plugin or all plugins |
+| `grok plugin enable <name>` | Enable a plugin |
+| `grok plugin disable <name>` | Disable a plugin |
+| `grok plugin details <name>` | Show the plugin's component inventory |
+
+### In the Terminal UI
+
+Open the plugins modal with `Ctrl+L` (outside the VS Code family) or `/plugins` (any terminal, required on the VS Code family). It has five tabs — **Hooks**, **Plugins**, **Marketplace**, **Skills**, and **MCP Servers** — switch with `Tab` / `Shift+Tab`. The `/hooks`, `/marketplace`, `/skills`, and `/mcps` commands open the modal on the matching tab.
+
+**Plugins tab key bindings:**
+
+| Key | Action |
+|-----|--------|
+| `r` | Reload all plugins |
+| `a` | Add a plugin from `owner/repo`, a URL, or a local path |
+| `Space` | Enable or disable the selected plugin |
+| `x` | Uninstall the selected plugin |
+| `f` | Filter by status (all, enabled, or disabled) |
+| `/` | Search by name |
+
+**Marketplace tab key bindings:**
+
+| Key | Action |
+|-----|--------|
+| `i` | Install the selected plugin |
+| `d` | Uninstall the selected plugin |
+| `a` | Add a marketplace source |
+| `x` | Remove the selected source and its plugins |
+| `r` | Refresh sources |
+| `u` | Update the selected plugin |
+
+Destructive actions ask for confirmation: press lowercase `y` to confirm, any other key (including `Esc`) to cancel.
+
+### Turn Plugins On or Off in Config
+
+Set these in `~/.grok/config.toml`:
+
+```toml
+[plugins]
+paths = ["~/my-plugins/custom-tools"]        # extra plugin directories
+disabled = ["user/a1b2c3d4/noisy-plugin"]    # names or IDs to skip
+enabled = ["project/9f8e7d6c/team-tools"]    # names or IDs to force on
+```
+
+## Trust and Security
+
+Plugins run with your privileges — treat them like any software you install. Enabling a plugin loads its skills, commands, and agents. Trust is separate and controls whether a plugin's code runs: even when enabled, its hooks, MCP servers, and LSP servers stay inactive until you trust it.
+
+- Plugins in `~/.grok/plugins/` are **trusted automatically**.
+- Project plugins in `.grok/plugins/` **require explicit trust**.
+- Install with `--trust` to grant trust at install time:
+
+```bash
+grok plugin install <source> --trust
+```
+
+## Create Your Own Marketplace
+
+A marketplace is a git repository (or a local folder) that lists a set of plugins. Publishing your own is how a team or organization shares skills, commands, agents, hooks, and MCP servers from one place.
+
+<Steps>
+  <Step title="Create a git repository">
+    A private repository is fine; access uses each person's own git credentials.
+  </Step>
+
+  <Step title="Add plugin folders">
+    Each plugin is a folder inside the repository. A plugin folder can contain any combination of:
+
+    ```
+    my-plugin/
+      skills/           # SKILL.md files
+      commands/         # Slash command markdown
+      agents/           # Agent definitions
+      hooks/
+        hooks.json      # Hook definitions
+      .mcp.json         # MCP server configurations
+    ```
+
+    An optional `plugin.json` manifest can override paths or add metadata. Without one, Grok discovers components from these standard directories.
+  </Step>
+
+  <Step title="Write the marketplace index">
+    Create `.grok-plugin/marketplace.json` at the repository root. This is the index Grok reads:
+
+    ```json
+    {
+      "name": "My Org Plugins",
+      "description": "Internal skills and tools",
+      "owner": { "name": "Platform Team", "email": "platform@example.com" },
+      "plugins": [
+        {
+          "name": "gdrive",
+          "description": "Search and edit Google Drive, Docs, Sheets, and Slides",
+          "category": "productivity",
+          "source": { "type": "local", "path": "./plugins/gdrive" }
+        }
+      ]
+    }
+    ```
+  </Step>
+
+  <Step title="Understand the marketplace.json structure">
+    Each plugin's `source` points at its files in one of two ways:
+
+    - **In this repository**: `{ "type": "local", "path": "./plugins/gdrive" }`. The plain string `"./plugins/gdrive"` also works.
+    - **In a separate repository**: `{ "source": "url", "url": "https://github.com/my-org/gdrive.git", "sha": "<full commit sha>" }`. Pin a `sha` so installs are reproducible.
+
+    Optional per-plugin fields: `version`, `author`, `homepage`, `tags`, and `keywords`.
+  </Step>
+
+  <Step title="Add an optional catalog">
+    A `plugin-index.json` catalog lets the marketplace browser show each plugin's components before anyone installs it. Teams usually generate it in CI:
+
+    ```json
+    {
+      "version": 1,
+      "plugins": {
+        "gdrive": {
+          "components": {
+            "skills": [{ "name": "gdrive", "description": "Google Drive access" }]
+          }
+        }
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Validate and tag a release">
+    Validate a plugin before publishing, then tag a release from the manifest version:
+
+    ```bash
+    grok plugin validate [<path>]
+    grok plugin tag [<path>] [--push]
+    ```
+
+    Then point people at the repository. They add it once and install the plugins they want:
+
+    ```bash
+    grok plugin marketplace add my-org/my-org-plugins
+    grok plugin install gdrive --trust
+    ```
+  </Step>
+</Steps>
+
+## Distribute Across an Organization
+
+Admins control plugins, marketplaces, and MCP servers through two managed layers:
+
+- **`managed_config.toml`** — holds the same settings as a user's `config.toml` and merges into it. Use it to hand everyone a marketplace and turn plugins on.
+- **`managed-settings.json`** — a protected policy file. Its values take precedence over user, project, and local config and cannot be overridden.
+
+### Roll a Marketplace Out to Everyone
+
+Add the source and turn on plugins in `managed_config.toml`:
+
+```toml
+[[marketplace.sources]]
+name = "My Org Plugins"
+git = "https://github.com/my-org/my-org-plugins.git"
+
+[plugins]
+enabled = ["gdrive"]
+```
+
+### Restrict Which Marketplaces Can Be Added
+
+List the only sources people may add in `managed-settings.json`. Any other marketplace is refused:
+
+```json
+{
+  "strictKnownMarketplaces": [
+    { "source": "git", "url": "git@github.enterprise.example:ACME/my-org-plugins.git" }
+  ]
+}
+```
+
+### Restrict Which MCP Servers Can Run
+
+Also in `managed-settings.json`. Each entry allows an HTTP address (with `*` wildcards) or a local command; anything unlisted is denied:
+
+```json
+{
+  "allowedMcpServers": [
+    { "serverUrl": "https://*.example.com/*" },
+    { "command": "npx" }
+  ]
+}
+```
+
+### Require Pinned Versions
+
+Refuse any remote plugin install or update that is not pinned to a full commit SHA:
+
+```toml
+[marketplace]
+require_sha = true
+```
+
+You can also set `GROK_MARKETPLACE_REQUIRE_SHA=1`. Publish `sha` values in your marketplace's `plugin-index.json` so installs satisfy the rule.
+
+## Plugin Contents Reference
+
+A plugin is a directory with any combination of:
+
+| Component | Path | Description |
+|-----------|------|-------------|
+| Skills | `skills/` | SKILL.md files teaching Grok new workflows |
+| Slash commands | `commands/` | Markdown files becoming slash commands |
+| Agents | `agents/` | Agent definitions |
+| Hooks | `hooks/hooks.json` | Lifecycle hook definitions |
+| MCP servers | `.mcp.json` | MCP server configurations |
+| LSP servers | `.lsp.json` | Language server configurations |
+| Manifest | `plugin.json` | Optional — overrides paths or adds metadata |
+
+## Plugin Discovery Locations
+
+Grok discovers plugins from these locations, in priority order. When two plugins share a name, the higher-priority one wins:
+
+| Location | Scope | Trust |
+|----------|-------|-------|
+| `_meta.pluginDirs` (session/new or session/load) | Session only | Trusted automatically |
+| `--plugin-dir` (grok agent … stdio flag) | Process only | Trusted automatically |
+| `.grok/plugins/` | Project, shareable via version control | Requires trust |
+| `~/.grok/plugins/` | User, every project | Trusted automatically |
+| `[plugins].paths` (config) | Custom directories | Depends on location |
+
+## Plugin Environment Variables
+
+Plugin hooks receive two variables beyond the standard hook environment:
+
+| Variable | Description |
+|----------|-------------|
+| `GROK_PLUGIN_ROOT` | Absolute path to the plugin's installed directory. |
+| `GROK_PLUGIN_DATA` | Absolute path to the plugin's writable data directory, for state, caches, and logs. |
+
+Grok sets these and overrides any same-named value in the hook's `env` map. The `CLAUDE_PLUGIN_ROOT` and `CLAUDE_PLUGIN_DATA` aliases are also set for compatibility.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="A plugin you installed isn't showing up">
+    Plugins are off until enabled. Check `grok plugin list`, then add the plugin's name or ID to `[plugins].enabled` in `~/.grok/config.toml`, or press `Space` on it in the Plugins tab. Reload with `r` in the Plugins tab or start a new session.
+  </Accordion>
+
+  <Accordion title="A plugin's hooks or MCP servers don't run">
+    Hooks and MCP servers stay inactive until the plugin is trusted. Reinstall with `--trust`, or place the plugin under `~/.grok/plugins/` (auto-trusted). See [Trust and Security](#trust-and-security).
+  </Accordion>
+
+  <Accordion title="A skill or MCP server from a marketplace is missing">
+    Refresh the source with `grok plugin marketplace update`, confirm the plugin is installed and enabled, and — if your organization restricts sources — check that the marketplace is still allowed. Some MCP servers require a sign-in and will not appear until you authenticate via `i` in the `/mcps` modal.
+  </Accordion>
+
+  <Accordion title="An install is refused as unpinned">
+    Your deployment requires pinned commits. Install an exact commit (`owner/repo@<sha>`), or use a marketplace whose `plugin-index.json` publishes `sha` values. See [Require Pinned Versions](#require-pinned-versions).
+  </Accordion>
+
+  <Accordion title="See exactly what loaded">
+    Run `grok inspect` (add `--json` for machine-readable output) to list every discovered plugin and the skills, agents, hooks, and MCP servers it provides, each labeled with its `plugin: <name>` source.
+
+    ```bash
+    grok inspect
+    grok inspect --json
+    ```
+  </Accordion>
+</AccordionGroup>

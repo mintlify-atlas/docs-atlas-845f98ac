@@ -1,0 +1,258 @@
+---
+title: "Manage Sessions in Grok Build: Resume, Rewind, and Compact"
+sidebarTitle: "Sessions"
+description: "Every Grok Build conversation is a saved session. Learn to resume, rewind, compact, fork, and search sessions, and understand the on-disk persistence format."
+---
+
+Grok saves every conversation automatically. Whether you work in the TUI, in headless mode, or over agent stdio, every exchange is recorded as a persistent session. Sessions track the full history of your work — prompts, responses, tool calls, task lists, and token usage — so you can always come back to where you left off.
+
+---
+
+## What Sessions Contain
+
+Each session stores:
+
+- All user prompts and agent responses
+- Tool calls and their results
+- TODO/task list state
+- Rewind points for undoing earlier turns
+- Token usage and turn counts
+- Subagent sessions (when enabled)
+
+Sessions are identified by a unique UUIDv7 (or a client-supplied UUID via `-s`) and stored on disk under `~/.grok/sessions/`. Set `GROK_HOME` to override the base directory.
+
+---
+
+## Starting and Ending Sessions
+
+### New session
+
+The TUI creates a new session each time you launch. To start fresh mid-session:
+
+```
+/new
+```
+
+This clears the current context and begins a new conversation. Alias: `/clear`.
+
+### Exit
+
+To end the session and quit Grok:
+
+```
+/quit
+```
+
+Alias: `/exit`. To leave the current session but stay in Grok, use:
+
+```
+/home
+```
+
+This returns you to the welcome screen without quitting.
+
+### Delete the current session
+
+```
+/delete
+```
+
+Confirms first, then permanently removes the session history and returns to the welcome screen. From `/resume` or the welcome session list, press `d` then `y` to delete.
+
+---
+
+## Resuming Sessions
+
+### From the TUI
+
+```
+/resume
+```
+
+Opens a session picker listing recent sessions for the current workspace. As you type, the picker filters by title and also searches your conversation content — content matches appear under an "Extended search results" heading. Press `Ctrl+/` to search immediately without the brief pause.
+
+### From the command line
+
+Resume a specific session by ID or title:
+
+```bash
+grok --resume <session-id-or-title>
+```
+
+Title matching is case-insensitive and scoped to the current directory. If several sessions share the title, a single manually renamed session wins over auto-generated duplicates; otherwise the command errors and lists the matching IDs. UUID-shaped values are always treated as session IDs — never titles. Scripts should prefer IDs.
+
+Run `grok --resume` without a value to resume the most recent session for the current directory.
+
+The short flag `-c` / `--continue` continues the most recent session in the current directory:
+
+```bash
+grok -c
+grok -p "What were we doing?" -c
+```
+
+### From the welcome screen
+
+When you launch `grok`, the welcome screen lists recent sessions for the current directory. Select one to resume it directly.
+
+### Session titles
+
+Titles are generated automatically from the conversation shortly after your first prompt and then frozen — so the title reflects what the session is really about, not just the opening message. A manual `/rename` always wins: once you rename a session, automatic generation never overrides it.
+
+---
+
+## Forking Sessions
+
+Branch the current session into a new peer agent that starts from a copy of the conversation:
+
+```
+/fork [--worktree|--no-worktree] [directive]
+```
+
+Pass an optional `directive` to set the new session's first prompt. Use `--worktree` or `--no-worktree` to choose whether the fork runs in a new git worktree; omit both to be asked each time.
+
+---
+
+## Renaming Sessions
+
+```
+/rename <title>
+```
+
+Alias: `/title`. Sets a manual title that automatic generation will not override.
+
+```
+/rename --auto
+```
+
+Clears a manual title and re-enables automatic titling.
+
+---
+
+## The /rewind Command
+
+`/rewind` (alias `/undo`) rewinds the conversation to an earlier turn, dropping later turns from the history:
+
+```
+/rewind
+/undo
+```
+
+You can also trigger rewind by pressing **Esc Esc** within 800 ms while idle with an empty prompt and conversation messages.
+
+When you run `/rewind`, Grok:
+
+1. Shows a list of rewind points — one per user prompt
+2. Lets you select which point to rewind to
+3. Truncates the conversation history to that point
+
+By default (**Confirm before rewind** on in `/settings`), each pick asks for confirmation. Choose "Yes, and don't ask again" to disable the confirmation prompt going forward.
+
+<Warning>
+`/rewind` truncates conversation history but leaves files on disk unchanged. File edits made by tool calls after the rewind point are **not** rolled back. You must manually restore any files if needed.
+</Warning>
+
+---
+
+## The /compact Command
+
+`/compact` compresses the conversation history to save context window space. Use it in long sessions where early messages are no longer relevant:
+
+```
+/compact
+/compact [context]
+```
+
+The optional `context` argument lets you provide instructions about what to preserve during compaction.
+
+### Auto-compact
+
+Grok automatically compacts the conversation when the context window approaches its limit. You will see a notification when auto-compact triggers.
+
+---
+
+## Listing and Searching Sessions
+
+List and search sessions from the command line using `grok sessions`:
+
+```bash
+# List recent sessions for the current directory
+grok sessions list
+
+# Limit the number of results (default 20)
+grok sessions list --limit 50
+
+# Search sessions by keyword (matches titles and prompts)
+grok sessions search "rate limit"
+```
+
+`grok sessions list` shows sessions grouped by worktree label, with session ID, creation and update dates, source status, and summary. `grok sessions search` combines a local SQLite FTS5 index with remote results.
+
+---
+
+## Storage Layout
+
+Grok stores each session in its own directory, grouped by working directory (URL-encoded):
+
+```
+~/.grok/sessions/<encoded-cwd>/<session-id>/
+  summary.json             # metadata: title, timestamps, model ID, message counts
+  updates.jsonl            # ACP session update stream (conversation + tool calls)
+  chat_history.jsonl       # raw chat messages sent to the model
+  plan.json                # TODO/task list state
+  rewind_points.jsonl      # rewind points for /rewind
+  signals.json             # session signals (token usage, tool/turn counters)
+  feedback.jsonl           # user feedback and ratings
+  compaction_checkpoints/  # saved state from compaction (manual or auto)
+  subagents/               # per-subagent metadata; child sessions live in normal sessions tree
+```
+
+`summary.json` is the index entry — it records the session title, model ID, timestamps, message counts, and a parent session reference for forks. `updates.jsonl` is the authoritative conversation log that drives `/resume` and session restore.
+
+---
+
+## Disk Usage
+
+`grok du` (alias: `grok disk-usage`) reports what `~/.grok` uses on disk. It lists each top-level directory largest first, then each worktree with its size, type, age, label, and path:
+
+```
+Disk usage for ~/.grok
+    412.3 GB  worktrees
+      1.2 GB  sessions
+    412.0 MB  (top-level files)
+    413.9 GB  total
+
+Worktrees
+        SIZE  TYPE                AGE        LABEL  PATH
+    380.0 GB  session             12d ago    my-fix ~/.grok/worktrees/xai/worktree-abc
+     32.3 GB  untracked (session) 40d ago           ~/.grok/worktrees/xai/worktree-old
+```
+
+Pass `--json` for the same report as machine-readable output.
+
+To reclaim space, use `grok worktree gc`:
+
+```bash
+# Preview what would be removed
+grok worktree gc --max-age 7d --dry-run
+
+# Remove worktrees older than 7 days
+grok worktree gc --max-age 7d
+```
+
+---
+
+## Worktree Sessions
+
+Grok can create isolated git worktrees per session. Each worktree is a separate copy of the working directory, so file changes in one session do not affect another.
+
+Resume a session in a fresh worktree with the `-w` flag:
+
+```bash
+grok -w -r <session-id>
+```
+
+Key worktree operations (managed via the `x.ai/git/worktree/*` extension methods):
+
+- **Create**: Create a new worktree for an isolated session
+- **Apply**: Merge worktree changes back into the main working directory
+- **Remove**: Clean up a worktree when the session is done

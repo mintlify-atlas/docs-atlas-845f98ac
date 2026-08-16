@@ -1,0 +1,135 @@
+---
+title: "Grok Build: AI Coding Agent for Your Terminal"
+sidebarTitle: "Introduction"
+description: "Grok Build is SpaceXAI's fullscreen TUI coding agent. Learn what it does, how it works, and the key concepts you need to use it effectively."
+---
+
+**Grok Build** is SpaceXAI's terminal-based AI coding agent. It runs as a full-screen TUI (Terminal User Interface) that understands your codebase, edits files, executes shell commands, searches the web, and manages long-running tasks. Unlike web-based coding assistants, Grok Build lives entirely in your terminal and works directly against your local filesystem. You can run it in three distinct modes: an interactive full-screen TUI for day-to-day development, a headless mode for scripting and CI/CD pipelines, or embedded inside editors via the Agent Client Protocol (ACP).
+
+## What Grok Build Does
+
+Grok Build adapts to how you work, offering three operating modes:
+
+**Interactive TUI** — The default mode. Run `grok` to open a full-screen terminal application with a scrollback view and a prompt at the bottom. Grok reads your files, runs shell commands, edits code, and streams every step live into the scrollback as it works. This is the recommended mode for active development.
+
+**Headless** — Run `grok -p "your prompt"` to execute a single turn non-interactively. Headless mode is designed for scripting, CI/CD pipelines, and automation. Output can be plain text, a JSON object, or a streaming NDJSON event stream via `--output-format`.
+
+**ACP / IDE Integration** — Grok exposes the Agent Client Protocol so that editors and IDEs can embed the agent runtime directly. ACP mode lets external tools drive the same agent loop that powers the TUI, enabling tight integration with editor UI without reimplementing the agent.
+
+<Note>
+  The three modes share the same agent runtime and tool set. A session started
+  in headless mode can be resumed interactively, and vice versa.
+</Note>
+
+## Built-in Tools
+
+Grok ships with a set of built-in tools that the agent can invoke during any turn. These tools can be extended with [MCP servers](/configuration) for additional integrations such as GitHub, databases, and more.
+
+| Tool | Description |
+|------|-------------|
+| `read_file` / `search_replace` | Read files and make line-precise edits using search-and-replace patches |
+| `grep` | Regex search across your codebase, powered by ripgrep |
+| `list_dir` | List directory contents |
+| `run_terminal_command` | Execute arbitrary shell commands in your environment |
+| `web_search` / `web_fetch` | Search the web and fetch the content of specific URLs |
+| `todo_write` | Create and manage task lists that track multi-step work across a session |
+| `spawn_subagent` | Spawn parallel subagent sessions to work on independent tasks concurrently |
+| `memory_search` | Search cross-session memory for context from previous conversations |
+
+<Tip>
+  By default, Grok asks for your approval before executing shell commands or
+  editing files. Press `Ctrl+O` or pass `--yolo` at launch to toggle
+  always-approve mode and skip individual confirmations.
+</Tip>
+
+## Key Concepts
+
+### Sessions
+
+Every conversation with Grok is a **session**. Sessions are automatically saved to `~/.grok/sessions/` and can be resumed at any time — even after closing the terminal. Each session stores the full conversation history, tool calls, file edits, and task state.
+
+- Start a new session: `Ctrl+N` or `/new`
+- Resume a specific session: `/resume` in the TUI, or `grok --resume <session-id>` from the shell
+- Continue the most recent session: `grok -c`
+
+### Scrollback
+
+The scrollback is the main display area of the TUI. It shows every event in the current session in chronological order:
+
+- **User prompts** — your messages, rendered as sticky headers
+- **Agent messages** — Grok's responses with full Markdown rendering and syntax highlighting
+- **Thinking blocks** — Grok's internal reasoning (collapsible)
+- **Tool calls** — file edits (with inline diffs), command executions, search results, and more
+- **Task lists** — TODO items tracking multi-step progress
+
+Press `Tab` to move focus between the prompt and the scrollback. Use the arrow keys (or `j`/`k` in Vim mode) to navigate entries, and `Left`/`Right` (or `h`/`l`) to collapse or expand them. Press `Enter` to open an entry in the fullscreen viewer.
+
+### Tools
+
+The agent selects and invokes tools automatically based on your prompt. Every tool call is streamed into the scrollback in real time so you can follow exactly what Grok is doing. You can cancel a running turn at any time with `Esc`.
+
+### Slash Commands
+
+Type `/` in the prompt to access built-in commands for quick actions without writing a full natural-language prompt:
+
+```
+/model grok-build     # Switch the active model
+/compact              # Compress conversation history to free context
+/always-approve       # Toggle always-approve mode for tool calls
+/new                  # Start a new session
+```
+
+See the [Slash Commands reference](/slash-commands) for the complete list.
+
+### AGENTS.md
+
+Place an `AGENTS.md` file in your repository (or home directory) to give Grok persistent, project-specific instructions. Grok reads these files at the start of every session and injects their contents as a project-instructions message.
+
+```
+~/.grok/AGENTS.md          # Global rules — applied to every project
+<repo-root>/AGENTS.md      # Repository-level rules
+<cwd>/AGENTS.md            # Directory-level rules (highest priority)
+```
+
+Deeper files take precedence. Grok also reads `CLAUDE.md` files for compatibility with other agents.
+
+<Tip>
+  Use `AGENTS.md` to encode conventions like preferred languages, coding
+  style, test commands, and any constraints the agent should always respect
+  in your project.
+</Tip>
+
+## Repository Layout
+
+The `grok` binary is built from a Rust workspace. The key crates are:
+
+| Path | Contents |
+|------|----------|
+| `crates/codegen/xai-grok-pager-bin` | Composition-root package; builds the `xai-grok-pager` binary |
+| `crates/codegen/xai-grok-pager` | The TUI: scrollback, prompt, modals, rendering |
+| `crates/codegen/xai-grok-shell` | Agent runtime and leader/stdio/headless entry points |
+| `crates/codegen/xai-grok-tools` | Tool implementations (terminal, file edit, search, and more) |
+| `crates/codegen/xai-grok-workspace` | Host filesystem, VCS, execution, and checkpoints |
+
+<Note>
+  The root `Cargo.toml` (workspace members, dependency versions, lints, and
+  profiles) is **generated** — treat it as read-only. Prefer editing
+  per-crate `Cargo.toml` files when contributing.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the `grok` binary on macOS, Linux, or Windows, or build from source with Rust and Cargo.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Configure browser login, API keys, OIDC/SSO, external auth providers, and device-code flow.
+  </Card>
+  <Card title="Keyboard Shortcuts" icon="keyboard" href="/keyboard-shortcuts">
+    Master the full-screen TUI with the complete keyboard shortcut reference.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    Customize Grok Build with `config.toml`, `pager.toml`, and environment variables.
+  </Card>
+</CardGroup>

@@ -1,0 +1,212 @@
+---
+title: "Extend Grok Build with MCP Servers"
+sidebarTitle: "MCP Servers"
+description: "Connect external tools to Grok Build using the Model Context Protocol. Configure stdio and HTTP/SSE transports, manage servers via CLI, and handle OAuth authentication."
+---
+
+MCP (Model Context Protocol) servers extend Grok with external tool integrations. Any service that implements the MCP standard can be connected — its tools become available alongside Grok's built-in capabilities. A GitHub MCP server might expose `create_issue` and `list_pull_requests`; a database server might expose `query` and `list_tables`. See the [MCP specification](https://modelcontextprotocol.io) for protocol details.
+
+## Configuration
+
+MCP servers are configured in `~/.grok/config.toml` under `[mcp_servers.<name>]` sections.
+
+### stdio Transport
+
+Grok spawns a local process and communicates over stdin/stdout:
+
+```toml
+[mcp_servers.my-server]
+command = "/path/to/server"           # Server executable
+args = ["--flag", "value"]            # Command arguments
+env = { API_KEY = "sk-..." }          # Environment variables
+enabled = true                        # Enable or disable the server (default: true)
+startup_timeout_sec = 30              # Server startup timeout, seconds (default: 30)
+tool_timeout_sec = 6000               # Per-tool-call timeout fallback, seconds (default: 6000)
+tool_timeouts = { slow_op = 120 }     # Per-tool timeout overrides, seconds
+```
+
+### HTTP/SSE Transport
+
+For remote MCP servers accessible over HTTP:
+
+```toml
+[mcp_servers.remote-api]
+url = "https://mcp.example.com/api"
+headers = { "Authorization" = "Bearer token" }
+```
+
+## CLI Management
+
+Manage MCP servers from the command line without editing config files:
+
+```bash
+# List configured MCP servers
+grok mcp list
+grok mcp list --json          # Machine-readable output
+
+# Add a stdio server (everything after -- is the server command)
+grok mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem /path/to/dir
+
+# Add a stdio server with environment variables (-e is repeatable)
+grok mcp add postgres -e DATABASE_URL=postgres://localhost/mydb -- npx -y @modelcontextprotocol/server-postgres
+
+# Add a remote HTTP server
+grok mcp add --transport http sentry https://mcp.sentry.dev/mcp
+
+# Add a remote server with an authentication header (--header is repeatable)
+grok mcp add --transport http api https://mcp.example.com/mcp --header "Authorization: Bearer YOUR_TOKEN"
+
+# Add a remote SSE server
+grok mcp add --transport sse linear https://mcp.linear.app/sse
+
+# Remove a server
+grok mcp remove github
+
+# Enable or disable a server
+grok mcp enable github
+grok mcp disable github
+
+# Diagnose a server's configuration and connectivity
+grok mcp doctor               # Check every configured server
+grok mcp doctor github        # Check one server
+grok mcp doctor --json        # Machine-readable output
+```
+
+By default `grok mcp add` writes to `~/.grok/config.toml` (`--scope user`). Use `--scope project` to write to `.grok/config.toml` in the current directory instead. The transport defaults to `stdio`; pass `--transport http` or `--transport sse` for remote servers.
+
+## Project-Scoped MCP Servers
+
+MCP servers can be configured per-project by placing a `.grok/config.toml` in your repository:
+
+```toml
+# .grok/config.toml
+[mcp_servers.linear]
+url = "https://mcp.linear.app/mcp"
+enabled = true
+```
+
+Grok walks from the current directory up to the git repo root, loading `.grok/config.toml` at each level. If a project defines a server with the same name as a global one, the project version replaces it entirely (fields are not merged).
+
+| Location | Scope | Priority |
+|----------|-------|----------|
+| `~/.grok/config.toml` | All projects | Lowest |
+| `<repo-root>/.grok/config.toml` | This repository | Medium |
+| `<cwd>/.grok/config.toml` | Current directory | Highest |
+
+## Tool Naming
+
+MCP tools are namespaced with the server name to avoid collisions:
+
+- Server `filesystem` with tool `read_file` → `filesystem__read_file`
+- Server `github` with tool `create_issue` → `github__create_issue`
+
+## Toggle at Runtime
+
+You can enable or disable MCP servers without restarting Grok using the `/mcps` slash command or the CLI (see [CLI Management](#cli-management)).
+
+Open the MCP servers modal in the TUI by running `/mcps` as a slash command, or press `Ctrl+L` (non–VS Code family) and navigate to the MCP Servers tab. From the modal you can:
+
+| Key | Action |
+|-----|--------|
+| `Space` | Toggle the selected server on or off |
+| `r` | Refresh the list after editing `config.toml` |
+| `i` | Authenticate an OAuth server |
+| `a` | Add a new server |
+| `x` | Remove a local server (press `y` to confirm) |
+
+The model also has access to two built-in tools: `search_tool` to discover available MCP tools by name or description, and `use_tool` to call a tool by its fully-qualified name (e.g. `github__create_issue`).
+
+## MCP OAuth
+
+For MCP servers that require OAuth authentication, Grok handles the credential flow automatically. When a server requests OAuth credentials, Grok opens a browser-based authorization flow. The resulting tokens are stored in `~/.grok/mcp_credentials.json` as local plaintext with owner-only file permissions (`0600` on Unix). Prefer full-disk encryption on the host.
+
+To authenticate an OAuth server from the TUI, press `i` on the server in the `/mcps` modal.
+
+## Available MCP Servers
+
+A partial list of MCP servers you can configure. Confirm the current endpoint or package name with each provider before use:
+
+| Server | Transport | Endpoint / Package |
+|--------|-----------|-------------------|
+| Linear | HTTP (OAuth) | `https://mcp.linear.app/mcp` |
+| Sentry | HTTP (OAuth) | `https://mcp.sentry.dev/mcp` |
+| Mixpanel | HTTP (OAuth) | `https://mcp.mixpanel.com/mcp` |
+| Filesystem | stdio | `@modelcontextprotocol/server-filesystem` |
+| Git | stdio | `@modelcontextprotocol/server-git` |
+| GitHub | stdio | `@modelcontextprotocol/server-github` |
+| GitLab | stdio | `@modelcontextprotocol/server-gitlab` |
+| PostgreSQL | stdio | `@modelcontextprotocol/server-postgres` |
+| SQLite | stdio | `@modelcontextprotocol/server-sqlite` |
+| Puppeteer | stdio | `@modelcontextprotocol/server-puppeteer` |
+
+See the [MCP Server Registry](https://github.com/modelcontextprotocol/servers) for the full community list.
+
+## Compatibility
+
+Grok loads MCP server configurations from multiple sources:
+
+| Source | Format | Location | Configurable |
+|--------|--------|----------|-------------|
+| `config.toml` | Native Grok config | `~/.grok/config.toml`, `.grok/config.toml` | Always on |
+| `.claude.json` | Claude Code format | `~/.claude.json` | `[compat.claude] mcps` |
+| `.cursor/mcp.json` | Cursor format | `~/.cursor/mcp.json`, `<project>/.cursor/mcp.json` | `[compat.cursor] mcps` |
+| `.mcp.json` | MCP standard format | Project root (cwd to git root) | Loaded unless import marker is set |
+
+All sources are merged in priority order: `config.toml` > Claude > Cursor > `.mcp.json`. Servers from higher-priority sources take precedence when names conflict. Use `grok inspect` to see which servers were loaded and their vendor origin.
+
+## Subagents and MCP
+
+Subagents inherit the parent session's connected MCP servers by default. Use agent frontmatter `mcpInheritance` to restrict that set:
+
+| Value | Behavior |
+|-------|----------|
+| `all` | Inherit all parent MCP servers (default) |
+| `none` | Inherit no MCP servers |
+| `named` | Inherit only the listed servers |
+| `except` | Inherit all servers except the listed ones |
+
+If a child agent lists `search_tool` / `use_tool` but returns an empty catalog, verify that the parent session has connected the server, that `mcpInheritance` is not `none` or a filter excluding the server, and note that plugin agents cannot declare their own `mcpServers` in frontmatter.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Test the server manually">
+    Run the server command directly to confirm it starts without errors before adding it to Grok:
+
+    ```bash
+    npx -y @modelcontextprotocol/server-filesystem /path
+    ```
+
+    If it starts successfully but hangs during handshake, increase `startup_timeout_sec` in `config.toml`.
+  </Accordion>
+
+  <Accordion title="Check stderr logs">
+    For stdio servers, Grok captures the process's standard error to `~/.grok/logs/mcp/<server>.stderr.log`, truncated on each launch. Check this file when a server starts but fails to handshake:
+
+    ```bash
+    tail -f ~/.grok/logs/mcp/filesystem.stderr.log
+    ```
+  </Accordion>
+
+  <Accordion title="Use grok inspect to view loaded servers">
+    Run `grok inspect` to see all loaded MCP servers and their sources:
+
+    ```bash
+    grok inspect          # Human-readable
+    grok inspect --json   # Machine-readable
+    ```
+
+    The output shows each server's source (including vendor origin such as `[cursor]` or `[claude]`), enabled state, and available tools.
+  </Accordion>
+
+  <Accordion title="Enable debug logging">
+    Set `RUST_LOG=debug` and redirect logs to a file to trace server startup, tool discovery, and call execution:
+
+    ```bash
+    RUST_LOG=debug GROK_LOG_FILE=/tmp/grok.log grok
+    tail -f /tmp/grok.log
+    ```
+
+    Filter for `mcp` entries in the log output to focus on MCP-related events.
+  </Accordion>
+</AccordionGroup>

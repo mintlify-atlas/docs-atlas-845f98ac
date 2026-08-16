@@ -1,0 +1,226 @@
+---
+title: "Monitor Grok Build Usage with OpenTelemetry"
+sidebarTitle: "Monitoring Usage"
+description: "Export Grok Build metrics and events to your OpenTelemetry collector. Covers environment setup, metrics and events schema, PromQL examples, and privacy model."
+---
+
+Grok can export usage metrics and events to your organization's own OpenTelemetry collector, giving platform teams fleet-wide visibility into token consumption, tool-permission decisions, startup performance, and errors — without any data flowing through SpaceXAI. The external stream is structurally separate from SpaceXAI-internal telemetry and works even for ZDR (zero-data-retention) teams.
+
+<Note>
+  OpenTelemetry export is **alpha status**. The schema is versioned
+  (`grok_code.schema.version = v1`). Additive changes may occur without notice;
+  renames and removals will bump the version and be called out in the changelog.
+</Note>
+
+---
+
+## Quick Start
+
+```bash
+export GROK_EXTERNAL_OTEL=1                       # master switch
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_LOGS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf  # or grpc
+export OTEL_EXPORTER_OTLP_ENDPOINT=https://collector.corp.example:4318
+export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Bearer <collector-token>"
+grok
+```
+
+`GROK_EXTERNAL_OTEL=1` alone enables **nothing** — you must also select at least one exporter. Conversely, the `OTEL_*` variables alone enable nothing without the master switch.
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `GROK_EXTERNAL_OTEL` | `0` | Master switch. Distinct from `GROK_TELEMETRY_ENABLED`, which controls SpaceXAI-internal product analytics. |
+| `OTEL_METRICS_EXPORTER` | `none` | `otlp` \| `console` \| `none` |
+| `OTEL_LOGS_EXPORTER` | `none` | `otlp` \| `console` \| `none`. Gates the event stream. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | `http/protobuf` \| `grpc`. Base protocol for both signals. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` (HTTP) or `http://localhost:4317` (gRPC) | Base endpoint. For `http/protobuf`, `/v1/logs` and `/v1/metrics` are appended automatically. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | — | Collector auth in `k=v,k2=v2` format. The only supported auth mechanism; tokens are never stored on disk. |
+| `OTEL_EXPORTER_OTLP_CERTIFICATE` | — | Path to a PEM bundle with additional trusted CA certificates for a private/corporate CA. |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | `10000` ms | Export timeout. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` ms | Metric export interval. |
+| `OTEL_BLRP_SCHEDULE_DELAY` | `5000` ms | Log batch interval (alias: `OTEL_LOGS_EXPORT_INTERVAL`). |
+| `OTEL_METRICS_INCLUDE_SESSION_ID` | `1` | Attach `session.id` to metrics (set to `0` to reduce cardinality). |
+| `OTEL_LOG_USER_PROMPTS` | `0` | Content gate: export prompt text on `grok_code.user_prompt` (60 KB cap, secret-scrubbed). |
+| `OTEL_LOG_TOOL_DETAILS` | `0` | Content gate: export tool parameters (4 KB cap), full file paths, and verbatim MCP/skill/plugin names. Bash command text is **never** exported in v1. |
+
+### config.toml
+
+Org defaults live under the `[telemetry]` table in `config.toml`. Environment variables take precedence.
+
+```toml
+[telemetry]
+otel_enabled            = true
+otel_metrics_exporter   = "otlp"
+otel_logs_exporter      = "otlp"
+otel_endpoint           = "https://collector.corp.example:4318"
+otel_protocol           = "http/protobuf"  # or "grpc"
+# Optional PEM paths for private-CA trust and mTLS (never PEM contents):
+otel_certificate        = "/etc/ssl/corp-ca.pem"
+otel_client_certificate = "/etc/ssl/client.crt"
+otel_client_key         = "/etc/ssl/client.key"
+otel_log_user_prompts   = false
+otel_log_tool_details   = false
+```
+
+There is deliberately no `headers` key in the config file — supply collector auth via `OTEL_EXPORTER_OTLP_HEADERS` so tokens are never stored on disk.
+
+---
+
+## Metrics Schema
+
+Meter scope: `ai.xai.grok_code`
+
+| Metric | Unit | Attributes |
+| --- | --- | --- |
+| `grok_code.session.count` | `{session}` | base attrs only |
+| `grok_code.token.usage` | `{token}` | `type` = `input` \| `output` \| `reasoning` \| `cache_read`; `model` |
+| `grok_code.turn.count` | `{turn}` | `outcome` = `completed` \| `cancelled` \| `error`; `model` |
+| `grok_code.tool.decision` | `{decision}` | `tool_name`, `decision` = `allow` \| `deny` \| `cancelled` \| `followup`, `access_kind`, `permission_mode` |
+| `grok_code.tool.usage` | `{call}` | `tool_name`, `outcome` |
+| `grok_code.error.count` | `{error}` | `error_category`, `model` |
+| `grok_code.startup.total` | `ms` | `outcome` = `ok` \| `timeout` \| `error`; `auth_mode` |
+| `grok_code.startup.phase_duration` | `ms` | `phase`, `outcome`, `auth_mode` |
+| `grok_code.startup.timeout` | `{timeout}` | `stuck_in`, `auth_mode` |
+
+`startup.total` measures process start to a usable session, recorded once per process. `startup.phase_duration` breaks the connect attempt down by step (`load_config`, `managed_policy`, `bootstrap`, `model_catalog`, `spawn_worker`, `leader_connect`, `acp_initialize`, `eager_auth`). Filter on `outcome` (`ok` \| `timeout` \| `cancelled` \| `error`) to avoid truncated samples skewing percentiles.
+
+There is no `cost.usage` metric: join `grok_code.token.usage` with your own price sheet.
+
+---
+
+## Events Schema
+
+Every event carries `event.sequence`, `session.id`, `turn_number`, and `prompt.id`, plus identity attributes.
+
+**Gate legend**: **details** = requires `OTEL_LOG_TOOL_DETAILS=1`; **prompts** = requires `OTEL_LOG_USER_PROMPTS=1`; everything else always exports while the stream is active.
+
+| `event.name` | Attributes |
+| --- | --- |
+| `grok_code.session_start` | `model`, `permission_mode`, `mcp_server_count`, `plugin_count`, `skill_count`, `hook_count`, `memory_enabled`, `is_git_repo`, `client_identifier` |
+| `grok_code.session_end` | `duration_secs`, `turn_count`, `tool_call_count`, `compaction_count`, `model` |
+| `grok_code.user_prompt` | `prompt_length`, `model`, `screen_mode`; `prompt` (**prompts**) |
+| `grok_code.turn_completed` | `outcome`, `duration_ms`, `tool_call_count`, `model`, `error_category`, `cancellation_category` |
+| `grok_code.api_request` | `model`, `duration_ms`, `stop_reason`, `input_tokens`, `output_tokens`, `reasoning_tokens`, `cache_read_tokens` |
+| `grok_code.api_error` | `error_category`, `model`, `status_code`, `duration_ms` |
+| `grok_code.tool_result` | `tool_name`, `outcome`, `success`, `duration_ms`, `file_extension`; `tool_parameters`, `file_path` (**details**) |
+| `grok_code.tool_decision` | `tool_name`, `decision`, `access_kind`, `permission_mode`, `source` |
+| `grok_code.mcp_server_connection` | `status`, `transport_type`, `duration_ms`, `tool_count`, `error_type`; `mcp_server.name` (**details**) |
+| `grok_code.permission_mode_changed` | `to_mode`, `trigger` |
+| `grok_code.skill_activated` | `skill_source`, `trigger`; `skill.name` (**details**) |
+| `grok_code.plugin_loaded` | `install_kind`, `success`, `error_category`; `plugin_name` (**details**) |
+| `grok_code.compaction` | `duration_ms`, `tokens_before`, `tokens_after`, `model` |
+| `grok_code.subagent` | `phase` = `launched` \| `completed`, `subagent_type`, `outcome`, `duration_ms` |
+| `grok_code.auth` | `auth_method` |
+| `grok_code.internal_error` | `error_type` (class only — no message, no location) |
+| `grok_code.model_switched` | `from_model`, `to_model`, `success`, `error_code` |
+
+---
+
+## Resource Attributes
+
+These attributes are attached to all telemetry:
+
+| Attribute | Value |
+| --- | --- |
+| `service.name` | `grok-cli` |
+| `service.version`, `client.version` | Build and client versions |
+| `app.entrypoint` | `cli` \| `headless` \| `agent` |
+| `terminal.type` | Terminal emulator brand |
+| `grok_code.schema.version` | `v1` |
+
+Identity attributes (`user.id`, and `organization.id` / `team.id` / `deployment.id` when known) are attached per metric data point and per event once authentication completes. `prompt.id` (per-prompt UUID) appears on events only, never metrics.
+
+---
+
+## Privacy Model
+
+Three independent fail-closed mechanisms guard the wire format:
+
+1. **Typed schema**: attribute keys are a closed enum; nothing outside it can be attached.
+2. **Emit-time redaction**: every string passes a secret-shape scrub and a home-directory scrub, with truncation (512→128 chars per value, 4 KB tool params, 60 KB prompt cap).
+3. **Export-time validators**: any record carrying a non-schema key, a closed-gate key, or an unscrubbed secret shape is dropped before leaving the process.
+
+**Never exported**: bash command text, error message bodies, prompt text (without the gate), file paths (without the gate), `api_key.id`, machine fingerprints, email addresses, subscription tier.
+
+The external stream is also independent of SpaceXAI data-retention opt-outs — it works even when `GROK_TELEMETRY_ENABLED` is disabled and for ZDR teams, since those settings govern SpaceXAI-side retention only.
+
+---
+
+## Example Collector Config
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  batch:
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9464
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: []   # point at your log backend (loki, elasticsearch, …)
+```
+
+---
+
+## PromQL Example Queries
+
+```promql
+# Token usage by model and type across the org, 1h rate
+sum by (model, type) (rate(grok_code_token_usage_total[1h]))
+
+# Sessions per team per day
+sum by (team_id) (increase(grok_code_session_count_total[1d]))
+
+# Tool-permission denial ratio
+sum(rate(grok_code_tool_decision_total{decision="deny"}[1h]))
+  / sum(rate(grok_code_tool_decision_total[1h]))
+```
+
+---
+
+## Debugging
+
+Set `OTEL_LOGS_EXPORTER=console` or `OTEL_METRICS_EXPORTER=console` to print redacted records to **stderr** (suppressed in `agent`/`headless` entrypoints to keep captured logs clean).
+
+For a full debug trace, run `grok --debug` and look for `external otel:` lines. These record whether the stream resolved its configuration and whether it is exporting or suppressed.
+
+If your collector receives nothing at all, check for:
+- `GROK_EXTERNAL_OTEL` not set to `1`.
+- No exporter selected (`OTEL_METRICS_EXPORTER` and `OTEL_LOGS_EXPORTER` both at `none`).
+- Startup suppression during the first few seconds while Grok fetches fleet policy (typically under one second; bounded at 30 seconds maximum).
+
+---
+
+## Related Settings
+
+| Setting | How to set it |
+| --- | --- |
+| Telemetry master switch | `[features] telemetry` / `GROK_TELEMETRY_ENABLED` |
+| Coding data, retention, and training | `/privacy` in-app |
+| Trace upload | `[telemetry] trace_upload` / `GROK_TELEMETRY_TRACE_UPLOAD` |
+| External OpenTelemetry (this guide) | `GROK_EXTERNAL_OTEL` / `[telemetry] otel_*` |
+
+The external OTEL stream and the SpaceXAI-internal telemetry stream govern **opposite-pointing data flows** and are completely independent. Org admins can distribute the `[telemetry] otel_*` keys via `grok setup` managed config or requirements pins, or force-disable the external stream fleet-wide using the same local config layers.

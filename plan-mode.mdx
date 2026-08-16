@@ -1,0 +1,155 @@
+---
+title: "Plan Mode: Structured Planning Before Coding in Grok Build"
+sidebarTitle: "Plan Mode"
+description: "Use Plan mode in Grok Build to let the agent explore and design an approach before writing any code. Review and approve the plan before implementation begins."
+---
+
+Plan mode is a structured planning phase where the agent explores the codebase and designs an implementation approach **before writing any code**. When plan mode is active, the agent is read-only (except for writing to the plan file itself) — it cannot edit project files until you review and approve its proposed plan. Use it for tasks with genuine ambiguity about the right approach, where getting your input before coding prevents significant rework.
+
+## What Plan Mode Does
+
+When plan mode is active, the agent:
+
+1. **Reads and searches the codebase** to understand existing patterns and architecture
+2. **Designs an implementation approach** and writes it to the plan file (`plan.md` in the session directory)
+3. **May use `ask_user_question`** to clarify specific questions before committing to an approach
+4. **Calls `exit_plan_mode`** to present the completed plan for your approval
+
+<Note>
+Plan mode is read-only except for the plan file. Plan-file edits are auto-approved so the agent can iterate freely, but edits to any other file are rejected outright — the tool call fails with a short message naming the plan file as the only editable path. This enforcement applies in every permission mode, including always-approve.
+</Note>
+
+## Entering Plan Mode
+
+### At Launch
+
+Pass `--plan` with your task description to start a session directly in plan mode:
+
+```bash
+grok --plan "refactor the auth module"
+```
+
+### During a Session
+
+Run the `/plan` slash command to enter plan mode from the current session. Plan mode activates on your next prompt. You can also combine the command and description in one step:
+
+```bash
+/plan redesign the data pipeline
+```
+
+### Via Shift+Tab
+
+Press **Shift+Tab** to cycle the session mode: **Normal → Plan → Always-approve → Normal**. A single press from Normal lands on Plan mode. You'll see the `plan` status flag in the UI while plan mode is active.
+
+### Via Agent Definition
+
+To require plan mode for a specific agent type, set `permissionMode: plan` in the agent's frontmatter:
+
+```yaml
+permissionMode: plan
+```
+
+## The Plan File
+
+The agent writes the plan to `plan.md` inside the session directory:
+
+```
+~/.grok/sessions/<encoded-cwd>/<session-id>/plan.md
+```
+
+A well-formed plan file contains:
+
+- A **Context** section explaining why the change is being made
+- The recommended implementation approach
+- The paths of critical files to modify
+- Existing functions and utilities to reuse, with their file paths
+- A **Verification** section describing how to test the changes end-to-end
+
+Plan-file edits are auto-approved without prompting. Edits to any other file are rejected and will not run — the agent receives a short message naming `plan.md` as the only editable path.
+
+## Reviewing and Approving the Plan
+
+When the agent finishes planning, it calls `exit_plan_mode`. The TUI opens a scrollable preview of the plan with an action bar at the bottom.
+
+### Approval Controls
+
+Scroll the plan with the arrow keys or `j`/`k`. The action bar provides:
+
+| Shortcut | Action |
+|----------|--------|
+| `a` | Approve the plan and start building. If you have pending comments, this reads **approve w/ comments** and sends them alongside the approval. |
+| `s` | Request changes. Focus moves to the prompt so you can type revision notes; press `Enter` to send them. |
+| `c` | Comment on the selected line or line range. |
+| `y` | Copy the full plan to the clipboard. |
+| `q` | Quit plan — abandon the plan without approving and turn plan mode off. |
+
+Press **Tab** to move focus between the plan preview and the prompt.
+
+### Providing Feedback
+
+The approval view has three focus states:
+
+- **Preview** — Scroll the plan and select lines to comment on.
+- **Commenting** — Add an inline comment to the selected line range (press `c` or `Enter` on a line).
+- **Prompt** — Type freeform revision notes.
+
+When you send feedback — inline comments, freeform notes, or both — the agent receives it and revises the plan. Plan mode stays active so you can iterate until the approach is right.
+
+### Viewing the Current Plan
+
+After a plan has been written, use `/view-plan` (aliases: `/show-plan`, `/plan-view`) to reopen the saved plan preview at any time without triggering a new planning turn.
+
+## Lifecycle States
+
+Plan mode has four states:
+
+| State | Description |
+|-------|-------------|
+| `Inactive` | Normal operating mode. No plan mode constraints apply. |
+| `Pending` | You toggled plan mode on (via `/plan` or Shift+Tab), but no prompt has been sent yet. |
+| `Active` | Plan mode is fully active. Plan-file edits are auto-approved; edits to all other files are rejected. |
+| `ExitPending` | You toggled plan mode off while a turn is still in-flight. |
+
+State transitions:
+
+```
+Inactive    --> Active       (enter_plan_mode tool called and approved — skips Pending)
+Inactive    --> Pending      (you toggle plan mode on with /plan or Shift+Tab)
+Pending     --> Active       (your first prompt activates plan mode)
+Active      --> Inactive     (exit_plan_mode approved, or you toggle plan mode off when idle)
+Active      --> ExitPending  (you toggle plan mode off while a turn is in-flight)
+ExitPending --> Inactive     (after the turn completes)
+```
+
+Plan mode state is persisted to disk and survives process restarts. Transient states (`Pending`, `ExitPending`) are collapsed back to `Inactive` on restart because they depend on in-flight interactions.
+
+## When to Use Plan Mode
+
+<Tip>
+**Use plan mode for:**
+- Tasks with significant **architectural ambiguity** — multiple reasonable approaches where your input shapes the design
+- **Large-scale refactors** that need architectural review before any code changes
+- **Unclear requirements** that benefit from exploration and a written rationale before implementation begins
+- **High-impact restructuring** where the wrong approach would waste significant effort
+</Tip>
+
+<Tip>
+**Skip plan mode for:**
+- Tasks with a clear, obvious implementation path
+- Bug fixes where the fix is straightforward once you understand the bug
+- Adding features that simply follow existing project conventions
+- Straightforward modifications (renaming, formatting, adding tests)
+- Research and exploration tasks — use subagents instead
+</Tip>
+
+## Compaction in Plan Mode
+
+When `/compact` runs during an active plan mode session, the plan mode state is fully preserved. The compacted context includes a reminder that plan mode is active, so the agent continues planning after compaction without losing track of its current phase.
+
+## Subagents and Plan Mode
+
+Plan mode's file-edit gate applies to the parent session only. Each subagent starts with its own fresh plan-mode tracker (`Inactive`). A `general-purpose` (or other write-capable) subagent can therefore edit files while the parent is still in plan mode — and it inherits the parent's permission mode, including always-approve. Read-only subagent types (such as `explore`) remain limited by their own toolset regardless.
+
+<Note>
+Plan mode is most effective for complex, multi-file changes where the **approach matters as much as the implementation**. For simple, well-defined tasks, skipping plan mode gets you to working code faster.
+</Note>

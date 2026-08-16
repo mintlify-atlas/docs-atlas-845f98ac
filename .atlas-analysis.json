@@ -1,0 +1,117 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Grok Build",
+  "projectDescription": "SpaceXAI's terminal-based AI coding agent — a fullscreen, mouse-interactive TUI that understands codebases, edits files, runs shell commands, searches the web, and can be extended with plugins, hooks, and MCP servers.",
+  "theme": "aspen",
+  "primaryColor": "#7C3AED",
+  "lightColor": "#EDE9FE",
+  "darkColor": "#1C0A3A",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "User Guide",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "authentication"
+            ]
+          },
+          {
+            "group": "Using Grok",
+            "pages": [
+              "keyboard-shortcuts",
+              "slash-commands",
+              "configuration",
+              "theming"
+            ]
+          },
+          {
+            "group": "Extending Grok",
+            "pages": [
+              "mcp-servers",
+              "skills",
+              "plugins",
+              "hooks",
+              "custom-models",
+              "project-rules",
+              "memory"
+            ]
+          },
+          {
+            "group": "Advanced Usage",
+            "pages": [
+              "headless-mode",
+              "agent-mode",
+              "subagents",
+              "sessions",
+              "plan-mode",
+              "sandbox",
+              "permissions-and-safety"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "background-tasks",
+              "dashboard",
+              "monitoring-usage",
+              "terminal-support"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Full-screen interactive TUI with vim mode, mouse support, and configurable themes",
+    "Fullscreen and minimal render modes, sticky across sessions",
+    "Browser login, API key, OIDC/SSO, and external auth provider support",
+    "Built-in tools: file editing, grep, shell execution, web search/fetch, subagent spawning, memory search",
+    "MCP (Model Context Protocol) server integration for external tool extensions",
+    "Skills system — reusable SKILL.md prompt packages, auto-invoked or slash-command triggered",
+    "Plugin marketplace — bundles of skills, hooks, MCP servers, and agents installable from GitHub",
+    "Lifecycle hooks (PreToolUse, PostToolUse, SessionStart, Stop, etc.) for automation and safety",
+    "Agent Client Protocol (ACP) JSON-RPC server for IDE and SDK integration",
+    "Subagents for parallel task delegation with isolated context windows",
+    "Plan mode for structured planning before code edits",
+    "OS-level sandbox isolation via Landlock (Linux) and Seatbelt (macOS)",
+    "Cross-session memory with FTS5 + vector hybrid search",
+    "Headless mode with JSON and streaming-JSON output for CI/CD automation",
+    "OpenTelemetry export for fleet-wide usage monitoring"
+  ],
+  "publicApiSurface": [
+    "grok (interactive TUI)",
+    "grok -p \"<prompt>\" (headless mode)",
+    "grok login / grok logout",
+    "grok --resume <id> / grok -c",
+    "grok --worktree / grok -w",
+    "grok --sandbox <profile>",
+    "grok --yolo (always-approve)",
+    "grok -m <model> (model selection)",
+    "grok models",
+    "grok mcp list/add/remove/enable/disable/doctor",
+    "grok plugin install/uninstall/list/update/enable/disable/details",
+    "grok plugin marketplace add/list/update/remove",
+    "grok plugin validate / grok plugin tag",
+    "grok sessions list/search",
+    "grok du / grok disk-usage",
+    "grok inspect [--json]",
+    "grok agent stdio / grok agent serve",
+    "grok update",
+    "grok doctor",
+    "grok dashboard",
+    "/compact, /new, /resume, /rewind, /fork, /rename",
+    "/model, /plan, /always-approve, /vim-mode",
+    "/memory, /flush, /dream, /remember",
+    "/hooks, /plugins, /marketplace, /skills, /mcps",
+    "/imagine, /imagine-video, /loop, /goal, /deep-research",
+    "ACP session/new, session/load, turn/start, turn/stream",
+    "AGENTS.md / SKILL.md / hooks.json / .mcp.json config files",
+    "~/.grok/config.toml / ~/.grok/pager.toml configuration",
+    "XAI_API_KEY, GROK_OIDC_ISSUER, GROK_AUTH_PROVIDER_COMMAND env vars",
+    "GROK_EXTERNAL_OTEL, OTEL_METRICS_EXPORTER env vars"
+  ]
+}

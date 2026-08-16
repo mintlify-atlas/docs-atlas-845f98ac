@@ -1,0 +1,424 @@
+---
+title: "Grok Build Hooks: Lifecycle Scripts and Safety Guards"
+sidebarTitle: "Hooks"
+description: "Use hooks to run scripts or HTTP requests at key moments in a Grok session — block dangerous commands, log tool use, auto-format code, and set up environment context."
+---
+
+Hooks are shell commands or HTTP endpoints that Grok calls when a specific lifecycle event occurs. You can use them to automate tasks, enforce safety checks, log activity, send notifications, and integrate your own tools — all without modifying Grok itself.
+
+## What Hooks Can Do
+
+- **Block actions** — A `PreToolUse` hook can deny a dangerous command before it runs, returning a reason that is shown to the model.
+- **Keep the agent working** — A `Stop` hook can block the agent from finishing its turn until a condition holds (for example, the test suite passes), feeding the reason back to the model so it can self-correct.
+- **React to events** — A `PostToolUse` hook can log every tool execution to a file or external service.
+- **Set up context** — A `SessionStart` hook can export environment variables or run setup scripts before any tool runs.
+
+---
+
+## Common Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Safety Guards" icon="shield-halved">
+    Block dangerous shell commands like `rm -rf /`, `mkfs`, or fork bombs before they execute, using a `PreToolUse` hook on `Bash`.
+  </Card>
+  <Card title="Audit Logging" icon="file-lines">
+    Record every tool call and session boundary to a log file or external service using `PreToolUse`, `PostToolUse`, `SessionStart`, and `SessionEnd`.
+  </Card>
+  <Card title="Notifications" icon="bell">
+    Send a Slack message, desktop notification, or webhook when Grok completes a task using a `Stop` or `SessionEnd` hook.
+  </Card>
+  <Card title="Auto-Formatting" icon="wand-magic-sparkles">
+    Run `cargo fmt`, `prettier`, or `eslint --fix` automatically after file edits using a `PostToolUse` hook.
+  </Card>
+  <Card title="Environment Setup" icon="gear">
+    Export credentials, configure tools, or load `.env` files at `SessionStart` so every tool invocation inherits the right context.
+  </Card>
+  <Card title="Custom Workflows" icon="code-branch">
+    Trigger CI builds, deploy previews, or external API calls at specific lifecycle events like `Stop` or `PostToolUse`.
+  </Card>
+</CardGroup>
+
+---
+
+## Quick Start
+
+<Steps>
+  <Step title="Create the hooks directory">
+    ```sh
+    mkdir -p ~/.grok/hooks
+    ```
+  </Step>
+
+  <Step title="Create a hook file">
+    Create `~/.grok/hooks/session-start.json` with the following content:
+
+    ```json
+    {
+      "hooks": {
+        "SessionStart": [
+          {
+            "hooks": [
+              { "type": "command", "command": "echo 'Grok session started in '$(pwd)" }
+            ]
+          }
+        ]
+      }
+    }
+    ```
+  </Step>
+
+  <Step title="Start or restart a Grok session">
+    The hook runs automatically on `SessionStart`. You do not need to do anything extra — Grok discovers all `*.json` files in `~/.grok/hooks/` automatically.
+  </Step>
+
+  <Step title="Verify the hook loaded">
+    Press `Ctrl+L` (on non-VS Code terminals) to open the Extensions modal, or run `/hooks` from any terminal (required on VS Code where `Ctrl+L` is intercepted). In the **Hooks** tab, confirm your hook appears and is enabled.
+  </Step>
+</Steps>
+
+---
+
+## Hook Locations
+
+Hooks are discovered from several places and merged together:
+
+| Scope | Path | Trusted? | Notes |
+|-------|------|----------|-------|
+| Global | `~/.grok/hooks/*.json` | Always | Personal hooks |
+| Global | `~/.claude/settings.json` (and `settings.local.json`) | Always | Claude Code compatibility (configurable) |
+| Global | `~/.cursor/hooks.json` | Always | Cursor compatibility (configurable) |
+| Project | `<project>/.grok/hooks/*.json` | Requires trust | Per-repo automation |
+| Project | `<project>/.claude/settings.json` (and `settings.local.json`) | Requires trust | Claude compatibility (configurable) |
+| Project | `<project>/.cursor/hooks.json` | Requires trust | Cursor compatibility (configurable) |
+| Config | `~/.grok/config.toml` | Always | Your hooks alongside the rest of your config |
+| Config | `managed_config.toml` (`$GROK_HOME` and `/etc/grok`) | Always | Organization-distributed hooks (server-synced and on-device) |
+| Config | `requirements.toml` (user and system) | Always | Organization-distributed hooks in the requirements layer |
+| Plugin | Bundled inside installed plugins | Per-plugin | Shared team hooks |
+
+**Trusting a project:** The first time you open a project with hooks, you must trust it before its project hooks will run — until then they are silently skipped. Grant trust by running `/hooks-trust` or launching with `--trust`. The decision is recorded in `~/.grok/trusted_folders.toml`, the same gate that governs repo-local MCP and LSP servers. Global hooks in `~/.grok/hooks/` are always trusted and need no entry.
+
+---
+
+## Hook Events
+
+Events fire at three cadences: once per session (`SessionStart`, `SessionEnd`), once per turn (`Stop`, `StopFailure`), and on every tool call inside the turn (`PreToolUse`, `PostToolUse`).
+
+| Event | Description | When It Fires | Blocking? |
+|-------|-------------|---------------|-----------|
+| `SessionStart` | Session begins | Once at startup | No |
+| `UserPromptSubmit` | User submits a prompt | Each prompt submission | No |
+| `PreToolUse` | Tool is about to run | Before each tool call | **Yes — can deny** |
+| `PostToolUse` | Tool completes successfully | After each successful tool call | No |
+| `PostToolUseFailure` | Tool fails | After each failed tool call | No |
+| `PermissionDenied` | Permission system denies a tool call | When a tool is blocked by permissions | No |
+| `Stop` | Agent turn ends on genuine completion | End of each agent turn | **Yes — can block the stop** |
+| `StopFailure` | Turn ends due to API error | On API errors | No |
+| `StopCancelled` | Turn ends without completing (interrupt, declined permission, max turns) | When a turn is interrupted or cut off | No |
+| `SubagentStart` | A subagent starts | When a subagent is spawned | No |
+| `SubagentStop` | A subagent's turn ends | At the subagent's turn end | **Yes — can block the stop** |
+| `Notification` | User-attention event (idle, permission prompt, task complete) | On various attention events | No |
+| `PreCompact` | Conversation compaction is about to run | Before compaction | No |
+| `PostCompact` | Conversation compaction completes | After compaction | No |
+| `SessionEnd` | Session ends | Once at teardown | No |
+
+`SubagentEnd` is accepted as an alias for `SubagentStop`. Every event not marked "Blocking?" is passive — its output is recorded but does not change control flow.
+
+---
+
+## Hook Configuration Format
+
+Each `.json` file defines hooks for one or more events using a `hooks` object keyed by event name:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bin/safety-check.sh", "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          { "type": "command", "command": "bin/log-activity.sh" }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Key Fields
+
+| Field | Description |
+|-------|-------------|
+| `matcher` | Optional regex tested against the event's key field (tool name on tool events, notification type on `Notification`, etc.). An empty or omitted matcher matches everything. |
+| `type` | `"command"` to run a shell script or inline command, or `"http"` to POST the event to a URL. |
+| `command` | Path to executable (relative to the JSON file) or an inline shell command. Used when `type` is `"command"`. |
+| `timeout` | Seconds before the hook is killed. Default is 5 seconds (or 600 seconds for `Stop`/`SubagentStop` gates). |
+| `url` | The endpoint to POST to. Used when `type` is `"http"`. |
+| `env` | Optional map of extra environment variables to set for this hook handler. |
+
+### HTTP Hooks
+
+Instead of a local script, you can call a remote endpoint:
+
+```json
+{ "type": "http", "url": "https://hooks.example.com/grok-event", "timeout": 15 }
+```
+
+The full event envelope is POSTed as JSON. Use only trusted endpoints, since hook payloads contain session data.
+
+### Hooks in TOML Config Files
+
+You can define hooks directly in `~/.grok/config.toml` using the same structure:
+
+```toml
+[[hooks.PreToolUse]]
+matcher = "Bash|Write|Edit"
+hooks = [
+  { type = "command", command = "/opt/guard/pretooluse.sh", timeout = 10 },
+]
+```
+
+Each matcher group is a `[[hooks.<Event>]]` entry with an optional `matcher` and an inner `hooks` array of handlers.
+
+---
+
+## Script Contract
+
+### Input
+
+Every hook receives the event as JSON on **stdin**. For example, a `PreToolUse` event:
+
+```json
+{
+  "hookEventName": "pre_tool_use",
+  "sessionId": "abc-123",
+  "cwd": "/Users/you/project",
+  "workspaceRoot": "/Users/you/project",
+  "permissionMode": "default",
+  "toolName": "run_terminal_command",
+  "toolInput": { "command": "npm test" },
+  "timestamp": "2026-04-14T12:00:00Z"
+}
+```
+
+All events share common fields: `hookEventName`, `sessionId`, `cwd`, `workspaceRoot`, `timestamp`, `permissionMode`, and `promptId` (absent for session-scoped events).
+
+### Output for PreToolUse
+
+Write JSON to **stdout** to control whether the tool runs:
+
+```json
+{ "decision": "allow" }
+```
+```json
+{ "decision": "deny", "reason": "Unsafe command detected" }
+```
+
+You can also rewrite the tool's input before it runs:
+
+```json
+{ "hookSpecificOutput": { "hookEventName": "PreToolUse", "updatedInput": { "command": "npm test" } } }
+```
+
+### Output for Stop / SubagentStop
+
+Write JSON to **stdout** to keep the agent working or force a stop:
+
+```json
+{ "decision": "block", "reason": "The test suite hasn't been run yet" }
+```
+```json
+{ "hookSpecificOutput": { "hookEventName": "Stop", "additionalContext": "Run the linter before finishing" } }
+```
+```json
+{ "continue": false, "stopReason": "Budget exhausted" }
+```
+
+### Exit Codes
+
+| Exit Code | Meaning |
+|-----------|---------|
+| `0` | Success / allow (for blocking hooks) |
+| `2` | Explicit deny (`PreToolUse`) or block-stop with stderr as feedback (`Stop`/`SubagentStop`) |
+| Other | Fail-open — the failure is recorded but nothing is blocked |
+
+All hook failures (timeouts, crashes, malformed output) are **fail-open**: the action is never blocked unless the hook explicitly returns a `deny` or `block` decision.
+
+---
+
+## Example Hooks
+
+The following example hooks are included with Grok Build. Copy them to `~/.grok/hooks/` to enable globally, or to `<project>/.grok/hooks/` for project scope (requires `/hooks-trust`).
+
+### Safe Shell Guard
+
+**Type:** Blocking `PreToolUse`
+
+Denies obviously destructive shell commands before they execute: `rm -rf /`, `sudo rm -rf`, `mkfs`, `dd` to devices, and fork bombs.
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bin/safe-shell-guard.sh", "timeout": 5 }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**Install:**
+```sh
+mkdir -p ~/.grok/hooks/bin
+cp examples/hooks/safe-shell.json ~/.grok/hooks/
+cp examples/hooks/bin/safe-shell-guard.sh ~/.grok/hooks/bin/
+chmod +x ~/.grok/hooks/bin/safe-shell-guard.sh
+```
+
+### No Recursive Grep
+
+**Type:** Blocking `PreToolUse`
+
+Denies recursive `grep` invocations (`grep -r`, `grep -R`, `grep --recursive`, `rgrep`, and clustered flags like `grep -rn`) before they execute. Recursive grep can walk an entire directory tree into memory and OOM-kill the agent process on large repos. The hook avoids false positives: `ls -R | grep foo` and `grep -e -r file` are allowed.
+
+**Install:**
+```sh
+mkdir -p ~/.grok/hooks/bin
+cp examples/hooks/no-recursive-grep.json ~/.grok/hooks/
+cp examples/hooks/bin/no-recursive-grep-guard.py ~/.grok/hooks/bin/
+chmod +x ~/.grok/hooks/bin/no-recursive-grep-guard.py
+```
+Requires `python3` on `PATH`.
+
+### Session Audit Log
+
+**Type:** Passive `SessionStart` + `SessionEnd`
+
+Appends session metadata to `~/.grok/session-audit.log` — event, session ID, cwd, and timestamp — so you have a durable record of every session.
+
+**Install:**
+```sh
+mkdir -p ~/.grok/hooks/bin
+cp examples/hooks/session-log.json ~/.grok/hooks/
+cp examples/hooks/bin/session-log.sh ~/.grok/hooks/bin/
+chmod +x ~/.grok/hooks/bin/session-log.sh
+```
+
+### Tool Activity Logger
+
+**Type:** Passive `PreToolUse` + `PostToolUse`
+
+Logs all tool calls to `~/.grok/tool-activity.log` — tool name, event type, effective tool name, and backgrounded status.
+
+**Install:**
+```sh
+mkdir -p ~/.grok/hooks/bin
+cp examples/hooks/tool-logger.json ~/.grok/hooks/
+cp examples/hooks/bin/tool-logger.sh ~/.grok/hooks/bin/
+chmod +x ~/.grok/hooks/bin/tool-logger.sh
+```
+
+### Stop Gate: Verify Before Finishing
+
+**Type:** Blocking `Stop`
+
+Keeps the agent working until `cargo build` passes. The hook returns `{"decision":"block","reason":"…"}`, which feeds the reason back to the model and starts another round. The built-in cap ends the turn after 8 consecutive continuations. The hook sets a 300-second timeout because a timed-out `Stop` hook fails open.
+
+**Install:**
+```sh
+mkdir -p ~/.grok/hooks/bin
+cp examples/hooks/stop-verify.json ~/.grok/hooks/
+cp examples/hooks/bin/stop-verify.sh ~/.grok/hooks/bin/
+chmod +x ~/.grok/hooks/bin/stop-verify.sh
+```
+
+---
+
+## Managing Hooks via TUI
+
+### Slash Commands
+
+```
+/hooks              # Open the Hooks tab in the Extensions modal
+/hooks-list         # Show hooks loaded in this session
+/hooks-trust        # Trust this project for hook execution
+/hooks-add <path>   # Add a custom hook file or directory
+/hooks-remove <path> # Remove a custom hook
+/hooks-untrust      # Revoke trust for this project
+```
+
+### The Hooks Tab
+
+Open the Hooks tab by pressing `Ctrl+L` on non-VS Code terminals, or by running `/hooks` anywhere (required on VS Code family where `Ctrl+L` is intercepted).
+
+| Key | Action |
+|-----|--------|
+| `r` | Reload all hooks from disk |
+| `a` | Add a custom hook by path |
+| `x` | Remove the selected hook source |
+| `Space` | Enable or disable the selected hook |
+| `f` | Cycle the status filter (All / Enabled / Disabled) |
+
+Hooks are grouped by source: **Global**, **Project**, **Plugin**, and **Custom**. Each entry shows the event it triggers on, the command or URL that runs, the timeout, and whether it is enabled.
+
+---
+
+## Hook Environment Variables
+
+Grok sets these variables on every hook process:
+
+### Always Available
+
+| Variable | Description |
+|----------|-------------|
+| `GROK_HOOK_EVENT` | The name of the event that triggered the hook (e.g. `pre_tool_use`, `session_start`) |
+| `GROK_HOOK_NAME` | The configured name of this specific hook (includes plugin prefix for plugin-provided hooks) |
+| `GROK_SESSION_ID` | The unique identifier of the current Grok session |
+| `GROK_WORKSPACE_ROOT` | Absolute path to the root of the current workspace |
+| `CLAUDE_PROJECT_DIR` | Absolute path to the workspace root (Claude Code-compatible alias for `GROK_WORKSPACE_ROOT`) |
+
+### Plugin Hook Variables
+
+When a hook originates from a plugin, Grok additionally injects:
+
+| Variable | Description |
+|----------|-------------|
+| `GROK_PLUGIN_ROOT` | Absolute path to the plugin's installed directory |
+| `GROK_PLUGIN_DATA` | Absolute path to the plugin's writable data directory |
+
+### User-Defined Variables
+
+You can supply additional variables per hook handler using the `env` field:
+
+```json
+{
+  "type": "command",
+  "command": "bin/my-hook.sh",
+  "env": {
+    "MY_SECRET": "value",
+    "LOG_LEVEL": "debug"
+  }
+}
+```
+
+These are passed to the hook process but cannot override the reserved runner or plugin variables above.
+
+---
+
+## Security Considerations
+
+- **User privileges:** Hooks run with your user permissions. Treat global hook scripts like any shell script you add to your PATH.
+- **Project trust:** Project hooks in `.grok/hooks/` require explicit trust via `/hooks-trust` or `--trust`. This prevents untrusted repos from running arbitrary code when you clone them.
+- **HTTP hooks:** HTTP hooks send the session event envelope to the remote endpoint. Only configure endpoints you control.
+- **Fail-open by design:** Hook crashes and timeouts never block a tool call. To enforce policy, your hook must run to completion and emit an explicit `{"decision":"deny","reason":"…"}` on stdout.
+- **No secrets in commands:** Use the `env` field and environment variables rather than embedding secrets directly in `command` or `url` strings.

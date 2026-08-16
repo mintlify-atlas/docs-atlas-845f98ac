@@ -1,20 +1,90 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Grok Build: Terminal AI Coding Agent by SpaceXAI"
+sidebarTitle: "Home"
+description: "Grok Build is SpaceXAI's terminal-based AI coding agent — a fullscreen TUI that edits files, runs commands, searches the web, and integrates into your workflow."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Grok Build (`grok`) is SpaceXAI's terminal-based AI coding agent. It runs as a full-screen, mouse-interactive TUI that understands your codebase, edits files, executes shell commands, searches the web, and manages long-running tasks — interactively, headlessly for scripting and CI/CD, or embedded in editors via the Agent Client Protocol (ACP).
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install the released binary on macOS, Linux, or Windows in seconds.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Browser login, API keys, OIDC/SSO, and external auth providers.
+  </Card>
+  <Card title="Keyboard Shortcuts" icon="keyboard" href="/keyboard-shortcuts">
+    Complete reference for TUI key bindings, Vim mode, and mouse support.
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    config.toml, pager.toml, environment variables, and all file locations.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## Get Running in Minutes
+
+<Steps>
+  <Step title="Install Grok">
+    Run the one-line installer for macOS or Linux:
+    ```bash
+    curl -fsSL https://x.ai/cli/install.sh | bash
+    ```
+    On Windows PowerShell:
+    ```powershell
+    irm https://x.ai/cli/install.ps1 | iex
+    ```
+    Verify: `grok --version`
+  </Step>
+  <Step title="Authenticate">
+    Launch Grok for the first time — it opens your browser to sign in automatically:
+    ```bash
+    grok
+    ```
+    For CI/CD environments, set an API key instead:
+    ```bash
+    export XAI_API_KEY="xai-..."
+    grok
+    ```
+  </Step>
+  <Step title="Start coding">
+    Type a prompt and press `Enter`. Grok reads your files, runs commands, and streams results live:
+    ```bash
+    grok "fix the failing auth tests and run them"
+    ```
+  </Step>
+  <Step title="Extend and automate">
+    Add MCP servers, install plugins from marketplaces, write lifecycle hooks, or run headlessly in CI/CD pipelines.
+  </Step>
+</Steps>
+
+## Explore the Features
+
+<CardGroup cols={3}>
+  <Card title="MCP Servers" icon="plug" href="/mcp-servers">
+    Connect external tools via Model Context Protocol.
+  </Card>
+  <Card title="Skills" icon="graduation-cap" href="/skills">
+    Reusable SKILL.md prompt packages for repeatable workflows.
+  </Card>
+  <Card title="Plugins" icon="puzzle-piece" href="/plugins">
+    Install bundles of skills, hooks, and MCP servers from marketplaces.
+  </Card>
+  <Card title="Hooks" icon="webhook" href="/hooks">
+    Lifecycle scripts for safety guards, audit logging, and automation.
+  </Card>
+  <Card title="Headless Mode" icon="terminal" href="/headless-mode">
+    Scriptable CI/CD automation with JSON output.
+  </Card>
+  <Card title="Agent Mode (ACP)" icon="robot" href="/agent-mode">
+    JSON-RPC server for IDE and SDK integration.
+  </Card>
+  <Card title="Subagents" icon="sitemap" href="/subagents">
+    Parallel child sessions for delegating large tasks.
+  </Card>
+  <Card title="Sandbox" icon="shield" href="/sandbox">
+    OS-level filesystem and network isolation.
+  </Card>
+  <Card title="Memory" icon="brain" href="/memory">
+    Cross-session knowledge persistence with hybrid search.
+  </Card>
+</CardGroup>

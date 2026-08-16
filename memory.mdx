@@ -1,0 +1,299 @@
+---
+title: "Cross-Session Memory in Grok Build"
+sidebarTitle: "Memory"
+description: "Enable and use cross-session memory in Grok Build to persist facts, decisions, and patterns across sessions. Manage memories with /flush, /dream, and /memory."
+---
+
+Memory lets Grok recall facts, decisions, and patterns from earlier sessions. When enabled, Grok indexes the information you save and searches it automatically at the start of each new session. Memory is **experimental** and **disabled by default**.
+
+<Note>
+  Memory is an experimental feature. All content is stored locally under `~/.grok/memory/` and is not synced to any remote service.
+</Note>
+
+---
+
+## What Memory Stores
+
+With memory enabled, Grok can carry forward:
+
+- **Project conventions** you explained in a previous session
+- **Debugging steps** that worked for a specific problem
+- **Architectural decisions** and the reasoning behind them
+- **Answered questions** — facts the model already confirmed, so it does not re-ask
+
+Without memory, each session starts completely fresh.
+
+---
+
+## Enabling Memory
+
+### Config File (Persistent)
+
+```toml
+# ~/.grok/config.toml
+[memory]
+enabled = true
+```
+
+### Environment Variable
+
+```bash
+export GROK_MEMORY=1
+grok
+```
+
+To force-disable memory for a process even when TOML or remote settings enable it:
+
+```bash
+export GROK_MEMORY=0
+```
+
+### Mid-Session Toggle
+
+Toggle memory on or off during a session without restarting:
+
+```
+/memory on
+/memory off
+```
+
+The toggle is session-scoped — it does not persist to `config.toml`. You can also press `t` inside the `/memory` modal to toggle. Toggling off removes access to memory tools but keeps existing files on disk; toggling on re-initializes storage and registers the memory tools.
+
+---
+
+## Storage Layout
+
+Memory is stored as Markdown files under `~/.grok/memory/`:
+
+| Location | Scope | Description |
+|----------|-------|-------------|
+| `~/.grok/memory/MEMORY.md` | Global | Facts that apply across all your projects |
+| `~/.grok/memory/<project-slug>-<hash8>/MEMORY.md` | Workspace | Project-specific conventions and context |
+| `~/.grok/memory/<project-slug>-<hash8>/sessions/` | Sessions | Per-session summaries and logs |
+
+Grok suffixes each workspace directory with a short hash of the repository's identity. For Git repositories, the identity is the `origin` remote in `org/repo` form, so clones and worktrees of the same repository share one memory directory.
+
+An SQLite index (`index.sqlite`) supports search across all memory files:
+- **FTS5** provides full-text keyword search (always active)
+- **vec0** adds vector similarity search when an embedding model is configured
+
+---
+
+## Saving Memories
+
+### /flush — Save This Session Now
+
+```
+/flush
+```
+
+Triggers an LLM-generated summary of the current session's most important content and writes it to a dated session log. The summary is indexed and searchable in future sessions. Use `/flush` before compaction (which discards old conversation turns), at the end of a productive debugging session, or after discovering important patterns.
+
+### /remember — Save a Note Immediately
+
+```
+/remember always open PR links after pushing
+```
+
+Run `/remember` with no text to enter remember mode, where the next line you type becomes the note. Grok opens a review panel showing the note (with an optional rewritten version you can toggle with `Tab`); the note is written only after you confirm.
+
+You can also ask Grok conversationally:
+
+```
+> remember to always open PR links after pushing
+```
+
+Grok appends the note to `MEMORY.md` under organized headings like `## Preferences`, `## Project Context`, or `## Debugging`. The file watcher reindexes the change immediately, so the entry is searchable within the current session.
+
+### /dream — Consolidate Session Logs
+
+```
+/dream
+```
+
+Reorganizes scattered session logs and memory entries into a coherent, deduplicated knowledge base. This reduces noise and improves search quality over time. See [Dream Consolidation](#dream-consolidation) for details.
+
+### Automatic Save on Session End
+
+When a session ends, Grok saves a structured metadata summary to a dated session log. The summary contains message counts, the first few substantive user prompts (up to five), and the session date/time (UTC). It is built from conversation metadata — no LLM call, no added latency. Trivial sessions (fewer than three substantive prompts, or fewer than 50 bytes of user text) are skipped. For richer capture of decisions and reasoning, use `/flush`.
+
+---
+
+## Searching and Viewing Memories
+
+### /memory — Browse the Memory Browser
+
+```
+/memory
+```
+
+Opens a modal showing all memory files, grouped by scope:
+
+- **Global** — cross-project memory (`MEMORY.md`)
+- **Workspace** — project-specific memory (`MEMORY.md`)
+- **Sessions** — per-session summaries, in reverse chronological order
+
+The modal uses a split-pane layout: file list on the left, read-only content preview on the right. The preview updates as you move through the list.
+
+| Key | Action |
+|-----|--------|
+| `↑`/`↓` or `j`/`k` | Move through the file list |
+| `PgUp`/`PgDn` | Jump 10 entries |
+| `/` | Filter the file list |
+| `y` | Copy the selected file's path to the clipboard |
+| `x` | Delete the selected session file (press `x` again to confirm) |
+| `t` | Toggle memory on or off |
+| `Ctrl+F` | Toggle fullscreen |
+| `Esc` | Close the modal, or exit filter mode |
+
+### Automatic First-Turn Injection
+
+On the first turn of each session, Grok automatically searches memory for content relevant to the current project and injects it as context. This means Grok starts with knowledge from previous sessions without any reminder. Memory is also searched after auto-compaction to recover relevant context that may have been discarded.
+
+### Manual Search
+
+You can trigger memory searches manually in the chat:
+
+```
+Search memory for "auth middleware patterns"
+Read my workspace MEMORY.md
+```
+
+The model has access to two memory tools during sessions:
+- `memory_search` — search across all memory using hybrid FTS5 + vector similarity
+- `memory_get` — read a specific memory file by path
+
+---
+
+## Forgetting Memories
+
+Ask Grok to forget something conversationally:
+
+```
+> forget the snake_case convention
+```
+
+Or delete individual session files directly in the `/memory` browser by pressing `x`. For guaranteed removal of any entry, edit the files under `~/.grok/memory/` directly.
+
+---
+
+## Dream Consolidation
+
+```
+/dream
+```
+
+Dream reorganizes individual session logs and memory entries into a coherent, deduplicated knowledge base, which reduces noise and improves search quality over time. `/dream` requires memory to be enabled.
+
+### Auto-Dream
+
+By default, Grok checks consolidation gates when a session ends and runs Dream automatically once enough time has passed and enough sessions have accumulated:
+
+```toml
+[memory.dream]
+enabled              = true   # Run automatic consolidation (default: true)
+min_hours            = 24     # Minimum hours between consolidations
+min_sessions         = 5      # Minimum sessions since the last consolidation
+check_interval_secs  = 3600   # Also check the gates hourly
+```
+
+---
+
+## CLI Commands
+
+Manage memory from the shell using `grok memory clear`:
+
+```bash
+# Clear workspace memory (MEMORY.md, sessions/, and index.sqlite) — default scope
+grok memory clear
+
+# The same scope, stated explicitly
+grok memory clear --workspace
+
+# Clear the global MEMORY.md
+grok memory clear --global
+
+# Clear both workspace and global memory
+grok memory clear --all
+
+# Skip the confirmation prompt
+grok memory clear --yes   # or -y
+```
+
+To edit memory files directly, open them in your editor:
+
+```bash
+$EDITOR ~/.grok/memory/MEMORY.md
+```
+
+---
+
+## Configuration Reference
+
+### Core Settings (`[memory]`)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable memory |
+| `session.save_on_end` | `true` | Write metadata summary on session end |
+| `watcher.enabled` | `true` | Watch `~/.grok/memory/` for external edits and reindex |
+
+### Index Settings (`[memory.index]`)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_chunk_chars` | `1600` | Maximum chunk size in characters |
+| `chunk_overlap_chars` | `320` | Character overlap between chunks |
+
+### Embedding Settings (`[memory.embedding]`)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `provider` | `"api"` | Embedding provider |
+| `model` | unset | Embedding model name. Unset or `""` uses full-text-only retrieval |
+| `dimensions` | `1024` | Embedding vector dimensions |
+
+### Search Settings (`[memory.search]`)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_results` | `6` | Maximum search results returned |
+| `min_score` | `0.7` | Minimum relevance score threshold |
+| `vector_weight` | `0.7` | Weight for vector similarity |
+| `text_weight` | `0.3` | Weight for BM25 text similarity |
+
+### Initial Injection Settings (`[memory.initial_injection]`)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable first-turn memory injection |
+| `min_score` | `0.9` | Score threshold for first-turn results |
+
+### Dream Settings (`[memory.dream]`)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable automatic Dream consolidation |
+| `min_hours` | `24` | Minimum hours between consolidations |
+| `min_sessions` | `5` | Minimum sessions since the last consolidation |
+| `stale_lock_secs` | `3600` | Seconds before a stale consolidation lock is reclaimed |
+| `check_interval_secs` | `3600` | Periodic Dream-gate check interval. Set `0` to disable. |
+
+### Flush Settings (`[compaction.memory_flush]`)
+
+These live under `[compaction]` because flush is triggered by compaction events:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable the pre-compaction memory flush |
+| `soft_threshold_tokens` | `4000` | Token headroom before the compact threshold that triggers a flush |
+| `max_flush_write_chars` | `8000` | Maximum characters the flush may write to memory |
+| `flush_model` | unset | Model for the flush turn. When unset, uses the session's primary model. |
+| `idle_timeout_secs` | `300` | Idle seconds before a background flush. Set `0` to disable. |
+| `semantic_dedup_threshold` | `0.92` | Cosine-similarity threshold for de-duplicating flushed content |
+
+---
+
+<Tip>
+  Use `/dream` periodically to consolidate fragmented session logs into organized, deduplicated topics. This significantly improves the quality of memory search over time, especially on long-running projects.
+</Tip>

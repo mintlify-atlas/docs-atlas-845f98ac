@@ -1,0 +1,277 @@
+---
+title: "Permissions and Safety Controls in Grok Build"
+sidebarTitle: "Permissions & Safety"
+description: "Control what Grok Build can access with permission modes, allow/ask/deny rules, and hooks. Configure interactive approvals, YOLO mode, and safety rule matching."
+---
+
+Grok's permission system controls which tools run automatically and which require your explicit approval. It operates in layers: a **permission mode** sets the baseline approval behavior for the session, **rules** (allow/ask/deny) refine that baseline for specific tools and patterns, and **hooks** can enforce hard limits before any other check runs.
+
+## Permission Modes
+
+Modes set a default approval policy. Allow, ask, and deny rules still apply on top of any mode.
+
+| Mode | What runs without asking | Best for |
+|------|--------------------------|----------|
+| `default` (**ask**) | Read-only tools and built-in read-only shell commands | Interactive day-to-day use |
+| `acceptEdits` | File edits without a prompt | Local coding while you review diffs later |
+| `plan` | Accepted for compatibility; use [Plan Mode](/plan-mode) for gated planning | Claude-compatible settings |
+| `auto` | Work the safety check allows; other calls are blocked or escalated | Interactive sessions that want fewer prompts |
+| `dontAsk` | Only pre-approved tools and built-in read-only handling | Strict CI allowlists |
+| `bypassPermissions` (**always-approve**) | All tool calls in general (`deny` rules, hooks, and some shell `ask` rules still apply) | Trusted automation and agent servers |
+
+**Always-approve** is the product name; config and Claude-compatible settings use `bypassPermissions` for the same mode.
+
+## How a Tool Call Is Authorized
+
+When the model requests a tool, the following checks happen in order:
+
+1. **`PreToolUse` hooks** — A hook can deny a tool call before any other check runs. A hook that allows a call does not skip the checks below.
+2. **Permission rules** (from config files or `--allow`/`--deny` flags)
+   - A matching `deny` rule rejects the call. `deny` wins over every other rule.
+   - A matching `ask` rule prompts you — including for file reads, searches, and shell commands that would otherwise be auto-approved.
+   - A matching `allow` rule approves the call.
+3. **Remembered grants** — Per-command approvals you saved from earlier prompts apply here, scoped to the current project.
+4. **Built-in auto-approvals** — Read-only tools and a fixed set of read-only shell commands run without prompting (see below).
+5. **Prompt policy** — Determined by the active permission mode: prompt, auto-approve, or auto-deny.
+
+Always-approve short-circuits this pipeline after step 2: `deny` rules, hooks, and `ask` rules that match a shell command's segments still apply, but remembered grants and `ask` rules on non-shell tools do not prompt.
+
+## Operations That Never Prompt
+
+The following operations are treated as read-only and run without prompting in every mode, unless a `deny` rule or hook blocks them. An `ask` rule forces a prompt even for these.
+
+### Read-Only Tools
+
+- `read_file`
+- `list_dir`
+- `grep` (content search)
+- `web_search`
+- `todo_write`
+- `get_command_or_subagent_output` / `wait_commands_or_subagents` / `kill_command_or_subagent` (subagent control)
+- Invoking skills
+
+### Read-Only Shell Commands
+
+After splitting chained commands (on `&&`, `||`, `;`, and pipes), the following primary commands are recognized as read-only:
+
+**Filesystem:** `ls`, `cat`, `pwd`, `date`, `whoami`, `hostname`, `uptime`, `ps`, `head`, `tail`, `wc`, `sort`, `uniq`, `tr`, `cut`
+
+**Git (read-only):** `git status`, `git branch`, `git log`, `git diff`, `git ls-files`, `git show`, `git rev-parse`, `git blame`, `git describe`, `git merge-base`, `git shortlog`, and other read-only git subcommands
+
+**Search and inspection:** `grep`, `rg` (but not `rg --pre` / `rg --pre=…`, which spawn a preprocessor per file)
+
+**Kubernetes (read-only):** `kubectl get`, `kubectl logs`, `kubectl describe`
+
+These checks apply per segment. In `ls && rm -rf /`, the `ls` segment is read-only but the `rm` segment is not — in `default` mode, `rm` prompts; under `dontAsk` it is denied.
+
+## Configuring Permissions
+
+Rules can be set via CLI flags, native config files, or Claude-compatible settings. Rules from all sources are merged into one set; `deny` > `ask` > `allow` applies across all sources regardless of which file a rule came from.
+
+### CLI Flags
+
+```bash
+grok -p "Review the API changes" \
+  --allow 'Bash(git *)' \
+  --allow 'Bash(gh *)' \
+  --allow 'Read' \
+  --allow 'Grep' \
+  --deny 'Bash(rm -rf *)'
+```
+
+For permission mode:
+
+```bash
+# Always-approve (alias: --yolo)
+grok --always-approve -p "Run the test suite"
+
+# Auto mode
+grok --permission-mode auto
+
+# Explicit bypassPermissions
+grok --permission-mode bypassPermissions
+```
+
+**Keyboard shortcut:** Press **Ctrl+O** in the TUI to toggle always-approve (YOLO) mode on or off interactively.
+
+### Native Config (`~/.grok/config.toml` and `.grok/config.toml`)
+
+```toml
+[permission]
+rules = [
+  { action = "allow", tool = "bash", pattern = "cargo test *" },
+  { action = "allow", tool = "bash", pattern = "npm run build" },
+  { action = "allow", tool = "read" },
+  { action = "allow", tool = "grep" },
+  { action = "deny",  tool = "bash", pattern = "rm -rf *" },
+  { action = "ask",   tool = "edit" },
+]
+```
+
+The compact string-array form is also supported:
+
+```toml
+[permission]
+allow = ["Bash(git *)", "Bash(gh *)"]
+deny  = ["Bash(rm -rf *)", "Read(/Users/you/private/**)"]
+```
+
+You can also set the permission mode in config:
+
+```toml
+[ui]
+permission_mode = "always-approve"   # or "auto", "ask", "acceptEdits", …
+```
+
+### Claude Code Compatibility (`.claude/settings.json`)
+
+Grok reads `~/.claude/settings.json`, `~/.claude/settings.local.json`, and the project-level equivalents. This allows teams already using Claude Code to share settings with Grok:
+
+```json
+{
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Read",
+      "Grep",
+      "Bash(git *)",
+      "Bash(gh *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)"
+    ]
+  }
+}
+```
+
+Supported `defaultMode` values: `default`, `auto`, `acceptEdits`, `bypassPermissions`, `dontAsk`, `plan`.
+
+You can import existing Claude settings interactively with **Ctrl+I** ("Import Claude settings").
+
+## Permission Rules Reference
+
+Rules are defined in `[permission]` in `config.toml`. Each rule has the following fields:
+
+| Field | Values | Description |
+|-------|--------|-------------|
+| `action` | `allow`, `deny`, `ask` | What to do when the rule matches. **Default is `deny`** (CWE-1188: omitting `action` no longer silently creates a catch-all allow). |
+| `tool` | `any`, `bash`, `edit`, `read`, `grep`, `mcp`, `webfetch` | Which tool class to match. Defaults to `any`. |
+| `pattern` | String | Pattern to match against the tool call argument. |
+| `pattern_mode` | `glob` (default), `domain` | How the pattern is matched. Use `domain` for `WebFetch` host matching. |
+
+### Full Config Example
+
+```toml
+# Allow common development commands
+[[permission.rules]]
+action = "allow"
+tool = "bash"
+pattern = "cargo test *"
+
+[[permission.rules]]
+action = "allow"
+tool = "bash"
+pattern = "git *"
+
+# Block a dangerous pattern unconditionally
+[[permission.rules]]
+action = "deny"
+tool = "bash"
+pattern = "rm -rf *"
+
+# Prompt before any file edits
+[[permission.rules]]
+action = "ask"
+tool = "edit"
+
+# Allow a specific domain for web fetching
+[[permission.rules]]
+action = "allow"
+tool = "webfetch"
+pattern = "docs.example.com"
+pattern_mode = "domain"
+```
+
+<Note>
+The default `action` for a rule with no explicit `action` field is `deny`, not `allow`. This is an intentional security default (CWE-1188): omitting the `action` field in a TOML permission rule should not silently create a catch-all allow rule.
+</Note>
+
+### Rule Matching
+
+**Bash rules** — Patterns match against the command string as a prefix or as a glob. Include a trailing space and wildcard (`Bash(git *)`) to require the prefix to be a whole word. `deny` and `ask` rules are checked against every segment of a chained command; `allow` rules match the whole command string only.
+
+**Read, Edit, and Grep rules** — Path patterns are globs matched against the tool path after lexical normalization. `*` and `?` do not cross `/`; `**` does. `Read(src/**)` matches all files under `src/`.
+
+**WebFetch rules** — `domain:example.com` matches that host and every subdomain, case-insensitively. A pattern without `domain:` globs against the full URL.
+
+**MCP rules** — `MCPTool(server__tool)` form with glob support. `MCPTool(linear__*)` matches every tool from the `linear` server.
+
+**Evaluation order** — `deny` > `ask` > `allow`, regardless of rule order or source file. Any matching `deny` rejects; otherwise any matching `ask` prompts; otherwise any matching `allow` approves.
+
+## Interactive Approvals
+
+When a tool call requires approval, the permission prompt offers these choices:
+
+- **Allow once** — approve this single invocation
+- **Reject once** — reject it, optionally with a message back to the model
+- **Enable always-approve mode** — approves all future tool calls
+
+### Prompt Key Bindings
+
+| Key | Action |
+|-----|--------|
+| **Up / Down** | Move between choices |
+| **Tab** | Walk between options |
+| **1–9** | Choose option by number |
+| **Enter** | Confirm selection |
+| **← / →** | Widen or narrow scope of the approval |
+| **e** | Edit the pattern before saving |
+| **Ctrl+F** | Expand / show full args |
+| **Ctrl+O** | Toggle always-approve (YOLO) mode |
+| **Esc** | Park / dismiss without choosing |
+
+### Per-Command Always-Allow Memory
+
+Enable `remember_tool_approvals` to have prompts offer persistent per-command grants:
+
+```toml
+# ~/.grok/config.toml
+[ui]
+remember_tool_approvals = true
+```
+
+With this enabled, prompts gain an **Always allow: `<command>`** row that persists an allow for the command prefix, and a matching "never allow" row. The prompt shows exactly what pattern will be saved before you confirm.
+
+Interactive grants are scoped to the git repository you launched Grok in. A grant accepted at the repo root also applies in sessions started from any subdirectory of the same repository. Grants from one project never apply in another.
+
+## Claude-Compatible Settings
+
+Grok fully supports permission rules from `.claude/settings.json` and `.claude/settings.local.json` files. This means:
+
+- Teams already using Claude Code can use the same permission config with Grok
+- `defaultMode`, `allow`, `deny`, and `ask` arrays are all respected
+- Rules from `.claude` files are merged with native `.grok/config.toml` rules; `deny` > `ask` > `allow` applies across both sources
+
+For personal, uncommitted rules in a project, use `.claude/settings.local.json` (Grok reads it directly). Grok has no native `config.local.toml`.
+
+## Best Practices
+
+<Tip>
+**Start conservative, expand as needed.** Begin with `default` (ask) mode for interactive work. Move to `acceptEdits` for trusted projects where you're comfortable reviewing diffs after the fact. Reserve `auto` or `dontAsk` for well-understood CI or scripting environments.
+</Tip>
+
+<Tip>
+**Use `deny` rules for known-dangerous patterns.** Add explicit deny rules for commands you never want executed — `rm -rf *`, credential-touching paths, destructive database operations — rather than relying on prompts to catch them.
+</Tip>
+
+<Tip>
+**Combine with hooks for fine-grained control.** A `PreToolUse` hook can enforce an allowlist that applies in every permission mode, including always-approve. Hooks are evaluated before the permission system, so a hook deny stops a call unconditionally.
+</Tip>
+
+<Tip>
+**Pair `bypassPermissions` with the sandbox.** If you need always-approve for automation (CI, agent servers, batch tasks), combine it with `--sandbox strict` or a custom sandbox profile. Permissions control what the model requests; the sandbox enforces OS-level limits on what the process can actually do.
+</Tip>
+
+<Warning>
+`bypassPermissions` (also `--yolo` / `--always-approve`) allows **all tool executions without prompting**. `deny` rules, hooks, and some shell `ask` rules still apply, but ordinary permission prompts are completely bypassed. Only use `bypassPermissions` in fully trusted, controlled environments — and always pair it with `deny` rules or the sandbox if there is any risk of unintended destructive actions.
+</Warning>
